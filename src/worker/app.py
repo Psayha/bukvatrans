@@ -1,7 +1,17 @@
 from celery import Celery
 from celery.schedules import crontab
+import sentry_sdk
+from sentry_sdk.integrations.celery import CeleryIntegration
 
 from src.config import settings
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.ENV,
+        traces_sample_rate=0.1,
+        integrations=[CeleryIntegration()],
+    )
 
 app = Celery("transcribe_bot", broker=settings.REDIS_URL, backend=settings.REDIS_URL)
 
