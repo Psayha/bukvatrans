@@ -1,12 +1,19 @@
 import asyncio
 import logging
 
+import sentry_sdk
+from sentry_sdk.integrations.logging import LoggingIntegration
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
 
 from src.config import settings
+from src.utils.logging import setup_logging
+
+setup_logging()
+
 from src.bot.middlewares.database import DatabaseMiddleware
 from src.bot.middlewares.user import UserMiddleware
 from src.bot.middlewares.ban import BanMiddleware
