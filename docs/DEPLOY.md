@@ -24,6 +24,16 @@ cp .env.example .env
 chmod 600 .env
 ```
 
+### 1.1. Логин в GHCR (один раз)
+
+Compose тянет образ `ghcr.io/psayha/bukvatrans:latest`, и Watchtower следит за обновлениями. Для приватного образа нужен `docker login`:
+
+```bash
+echo "$YOUR_PAT_WITH_READ_PACKAGES" | docker login ghcr.io -u <github_username> --password-stdin
+```
+
+Это создаёт `~/.docker/config.json`, который Watchtower монтирует read-only внутрь контейнера. PAT можно использовать тот же, что и для CI (`GHCR_TOKEN` со scope `read:packages` достаточно).
+
 Отредактируйте `.env`. Минимум:
 
 ```ini
@@ -110,13 +120,15 @@ print(asyncio.run(b.get_webhook_info()))
 
 ## Обновление
 
+**Автоматически:** `git push origin main` → CI билдит и публикует образ в GHCR → Watchtower на VPS подхватывает за ≤60 секунд и перезапускает только app-контейнеры (postgres/redis/nginx остаются прибиты).
+
+**Вручную:** если по какой-то причине Watchtower выключен:
 ```bash
-git pull
-docker compose build
+docker compose pull
 docker compose up -d --wait
 ```
 
-`--wait` дожидается healthcheck всех сервисов. Миграции применяются автоматически.
+`--wait` дожидается healthcheck всех сервисов. Миграции применяются автоматически one-shot сервисом `migrate`.
 
 ## Откат
 
