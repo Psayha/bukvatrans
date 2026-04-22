@@ -40,6 +40,24 @@ class Settings(BaseSettings):
     CELERY_SOFT_TIME_LIMIT: int = 1800
     CELERY_TIME_LIMIT: int = 2100
 
+    # Retention (days to keep transcription text before purging).
+    TRANSCRIPTION_RETENTION_DAYS: int = 3
+
+    # Admin 2FA
+    ADMIN_APPROVAL_TTL_SECONDS: int = 300
+
+    # Legal boilerplate (used in /privacy and /terms responses).
+    COMPANY_NAME: str = "{COMPANY_NAME}"
+    COMPANY_INN: str = "{COMPANY_INN}"
+    COMPANY_OGRN: str = "{COMPANY_OGRN}"
+    COMPANY_ADDRESS: str = "{COMPANY_ADDRESS}"
+    SUPPORT_EMAIL: str = "{SUPPORT_EMAIL}"
+    PRIVACY_POLICY_URL: str = ""
+    TERMS_URL: str = ""
+
+    # 54-ФЗ receipts — VAT code per FNS: 1=no VAT, 2=0%, 6=VAT 20%.
+    YUKASSA_VAT_CODE: int = 1
+
     # S3
     S3_ENDPOINT: str = ""
     S3_ACCESS_KEY: str = ""

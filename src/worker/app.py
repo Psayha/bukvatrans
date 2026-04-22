@@ -61,6 +61,10 @@ app.conf.beat_schedule = {
         "task": "src.worker.tasks.maintenance.cleanup_tmp_files",
         "schedule": 1800,
     },
+    "purge_old_transcription_text": {
+        "task": "src.worker.tasks.maintenance.purge_old_transcription_text",
+        "schedule": crontab(hour=3, minute=30),
+    },
     "check_dlq": {
         "task": "src.worker.tasks.maintenance.check_dead_letter_queue",
         "schedule": 300,

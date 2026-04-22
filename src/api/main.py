@@ -1,12 +1,15 @@
+import time
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from src.api.webhooks import handle_yukassa_webhook
 from src.config import settings
+from src.utils import metrics
 from src.utils.logging import _sentry_before_send, get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +34,26 @@ if settings.cors_allowed_origins_list:
         allow_headers=["*"],
         allow_credentials=False,
     )
+
+
+@app.middleware("http")
+async def _prometheus_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - start
+    # Path-cardinality control: only label metrics with known endpoints.
+    path = request.url.path
+    if path not in ("/webhooks/telegram", "/webhooks/yukassa", "/health", "/metrics"):
+        path = "other"
+    metrics.http_requests_total.labels(path=path, status=str(response.status_code)).inc()
+    metrics.http_request_duration_seconds.labels(path=path).observe(elapsed)
+    return response
+
+
+@app.get("/metrics")
+async def prometheus_metrics() -> Response:
+    body, content_type = metrics.render_latest()
+    return Response(content=body, media_type=content_type)
 
 
 @app.get("/health")

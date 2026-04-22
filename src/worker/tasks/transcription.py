@@ -4,12 +4,14 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+import sentry_sdk
 from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
 from celery.utils.log import get_task_logger
 
-from src.worker.app import app
+from src.utils import metrics
 from src.utils.logging import bind_job_context
+from src.worker.app import app
 
 logger = get_task_logger(__name__)
 
@@ -83,6 +85,12 @@ async def _transcribe_async(
     file_id: Optional[str],
     source_url: Optional[str],
 ) -> dict:
+    import time as _time
+    _started = _time.perf_counter()
+    sentry_sdk.set_tag("transcription_id", transcription_id)
+    sentry_sdk.set_tag("source_type", source_type)
+    sentry_sdk.set_context("job", {"user_id": user_id, "source_type": source_type})
+
     from src.db.base import async_session_factory
     from src.db.repositories.transcription import update_transcription_status, get_transcription
     from src.db.repositories.user import get_user, deduct_balance
@@ -197,14 +205,20 @@ async def _transcribe_async(
                 txt_bytes = text.encode("utf-8")
                 await send_document(user_id, txt_bytes, "transcription.txt")
 
+            metrics.transcriptions_total.labels(status="done", source_type=source_type).inc()
+            metrics.transcription_duration_seconds.labels(source_type=source_type).observe(
+                _time.perf_counter() - _started
+            )
             return {"status": "done", "duration": int(duration)}
 
         except SoftTimeLimitExceeded as e:
             logger.error("transcription_soft_timeout user_id=%s", user_id)
+            metrics.transcriptions_total.labels(status="timeout", source_type=source_type).inc()
             await _refund_and_notify(transcription_id, user_id, str(e))
             return {"status": "failed", "error": "timeout"}
         except Exception as e:
             logger.error("transcription_error user_id=%s err=%s", user_id, e, exc_info=True)
+            metrics.transcriptions_total.labels(status="failed", source_type=source_type).inc()
             await _refund_and_notify(transcription_id, user_id, str(e))
             return {"status": "failed", "error": str(e)}
 

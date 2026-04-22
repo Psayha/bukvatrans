@@ -19,6 +19,7 @@ from src.services.billing import PLANS, TOPUP_OPTIONS
 from src.services.notification import send_message
 from src.services.referral import process_referral_bonus
 from src.bot.texts.ru import PAYMENT_SUCCESS
+from src.utils import metrics
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -206,8 +207,13 @@ async def _handle_payment_succeeded(
     except Exception:
         # The session is rolled back by begin() context. Re-raise so YuKassa
         # gets 5xx and retries rather than losing money silently.
+        metrics.payments_total.labels(event="succeeded", type="error").inc()
         logger.error("payment_webhook_failed", payment_id=payment_id, exc_info=True)
         raise
+
+    tx_type = "subscription" if plan_key else "topup"
+    metrics.payments_total.labels(event="succeeded", type=tx_type).inc()
+    metrics.payment_amount_rub.labels(type=tx_type).inc(amount_rub)
 
     # User-facing notifications happen only after the DB commit succeeded.
     try:

@@ -34,9 +34,10 @@ anthropic==0.39.0
 # File formats
 python-docx==1.1.2
 
-# Logging
+# Logging / metrics
 structlog==24.4.0
 sentry-sdk[fastapi]==2.19.0
+prometheus-client==0.21.0
 
 # Utils
 python-multipart==0.0.18
