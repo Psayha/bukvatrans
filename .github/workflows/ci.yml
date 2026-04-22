@@ -87,13 +87,41 @@ jobs:
     needs: [test, lint]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # `packages: write` lets the workflow push to ghcr.io for this repo.
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Deploy to VPS
-        # Migrations are applied by the dedicated `migrate` compose service
-        # — `docker compose up -d --wait` blocks until it completes.
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
-            cd /app && git pull &&
-            docker compose pull &&
-            docker compose up -d --build --wait
-          '
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/psayha/bukvatrans
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+        # The VPS runs Watchtower (see docker-compose.yml), which polls
+        # ghcr.io every 60s and restarts containers when a new `:latest`
+        # tag appears. No SSH from CI to VPS — the image push is the
+        # deploy signal.

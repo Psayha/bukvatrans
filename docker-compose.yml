@@ -11,6 +11,10 @@ services:
   # long-running service `depends_on: migrate: service_completed_successfully`
   # so app containers never race the schema.
   migrate:
+    image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     build: .
     environment:
       ROLE: migrate
@@ -23,6 +27,10 @@ services:
     logging: *default-logging
 
   bot:
+    image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     build: .
     environment:
       ROLE: bot
@@ -37,6 +45,10 @@ services:
     logging: *default-logging
 
   worker:
+    image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     build: .
     environment:
       ROLE: worker
@@ -60,6 +72,10 @@ services:
     logging: *default-logging
 
   worker_summary:
+    image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     build: .
     environment:
       ROLE: worker_summary
@@ -75,6 +91,10 @@ services:
     logging: *default-logging
 
   worker_maintenance:
+    image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     build: .
     environment:
       ROLE: worker_maintenance
@@ -90,6 +110,10 @@ services:
     logging: *default-logging
 
   beat:
+    image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     build: .
     environment:
       ROLE: beat
@@ -102,6 +126,10 @@ services:
     logging: *default-logging
 
   api:
+    image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     build: .
     environment:
       ROLE: api
@@ -205,6 +233,28 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    logging: *default-logging
+
+  # Auto-deploy: polls ghcr.io for a new `:latest` tag every 60s and
+  # gracefully restarts containers with the same labels/env. CI just
+  # pushes the image — this watcher is the deploy trigger on the VPS.
+  #
+  # Auth: Watchtower reads ~/.docker/config.json mounted from the host.
+  # On first deploy run `docker login ghcr.io -u <github_user> -p <PAT>`
+  # so the file exists. The PAT only needs `read:packages`.
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.docker/config.json:/config.json:ro
+    environment:
+      WATCHTOWER_POLL_INTERVAL: "60"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+    # Only watches containers labelled `com.centurylinklabs.watchtower.enable=true`.
+    # Set on each app service via the labels block; nginx/db/redis stay pinned.
+    restart: unless-stopped
     logging: *default-logging
 
 volumes:
