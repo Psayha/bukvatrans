@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     YUKASSA_SHOP_ID: str = ""
     YUKASSA_SECRET_KEY: str = ""
 
-    # Database
+    # Database — SQLite default is strictly for local unit tests. The
+    # validator below refuses to start in ENV=production with a SQLite
+    # URL, so forgetting to set DATABASE_URL on the server fails loud
+    # instead of silently writing to an ephemeral file.
     DATABASE_URL: str = "sqlite+aiosqlite:///./test.db"
 
     # Redis / Celery (broker DB0, cache DB1, FSM DB2, rate_limit DB3)
@@ -103,4 +106,27 @@ class Settings(BaseSettings):
         return self._redis_url_with_db(self.REDIS_RATELIMIT_DB)
 
 
+def _validate_production(s: "Settings") -> None:
+    """Fail loud on obvious misconfiguration in production.
+
+    Forgetting to set DATABASE_URL on the server would silently fall back to
+    the SQLite default and write to an ephemeral file inside the container —
+    all user data disappears on redeploy. Better to crash at import time.
+    """
+    if s.ENV != "production":
+        return
+    problems: list[str] = []
+    if s.DATABASE_URL.startswith("sqlite"):
+        problems.append("DATABASE_URL is SQLite — set a Postgres URL for production.")
+    if not s.BOT_TOKEN:
+        problems.append("BOT_TOKEN is empty.")
+    if s.WEBHOOK_HOST and not s.WEBHOOK_SECRET:
+        problems.append("WEBHOOK_HOST is set but WEBHOOK_SECRET is empty.")
+    if problems:
+        raise RuntimeError(
+            "Production config invalid:\n  - " + "\n  - ".join(problems)
+        )
+
+
 settings = Settings()
+_validate_production(settings)

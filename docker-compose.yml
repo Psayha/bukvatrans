@@ -7,6 +7,21 @@ x-logging: &default-logging
     max-file: "5"
 
 services:
+  # One-shot service that runs `alembic upgrade head` and exits. Every
+  # long-running service `depends_on: migrate: service_completed_successfully`
+  # so app containers never race the schema.
+  migrate:
+    build: .
+    environment:
+      ROLE: migrate
+    command: alembic upgrade head
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    logging: *default-logging
+
   bot:
     build: .
     environment:
@@ -14,8 +29,8 @@ services:
     command: python -m src.bot.main
     env_file: .env
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -28,8 +43,8 @@ services:
     command: celery -A src.worker.app worker -Q transcription -n transcription@%h --loglevel=info --concurrency=8
     env_file: .env
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -51,8 +66,8 @@ services:
     command: celery -A src.worker.app worker -Q summary -n summary@%h --loglevel=info --concurrency=4
     env_file: .env
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -66,8 +81,8 @@ services:
     command: celery -A src.worker.app worker -Q maintenance -n maintenance@%h --loglevel=info --concurrency=1
     env_file: .env
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -96,8 +111,8 @@ services:
     expose:
       - "8000"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -168,19 +183,14 @@ services:
       POSTGRES_DB: transcribe_bot
       PGPASSWORD: ${DB_PASSWORD}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-3}
     volumes:
       - ./scripts/db_backup.sh:/usr/local/bin/db_backup.sh:ro
+      - ./scripts/db_backup_loop.sh:/usr/local/bin/db_backup_loop.sh:ro
       - db_backups:/backups
-    # Run once on startup, then every 24h at 03:00 UTC.
-    entrypoint: /bin/sh -c '
-        chmod +x /usr/local/bin/db_backup.sh;
-        while true; do
-          now=$$(date -u +%s);
-          target=$$(date -u -d "tomorrow 03:00" +%s 2>/dev/null || date -u -v+1d -v03H -v00M -v00S +%s);
-          sleep $$((target - now));
-          /usr/local/bin/db_backup.sh || echo "[backup] failed";
-        done
-      '
+    # Busybox-compatible loop: sleep until the next `$BACKUP_HOUR_UTC`:00 UTC,
+    # run the dump, repeat. No GNU-style `date -d` involved.
+    entrypoint: ["/bin/sh", "/usr/local/bin/db_backup_loop.sh"]
     restart: unless-stopped
     logging: *default-logging
 

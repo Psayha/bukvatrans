@@ -55,27 +55,38 @@ COMPANY_ADDRESS=...
 
 ## Шаг 2. Первичный выпуск TLS-сертификата
 
+**Важно:** `nginx` в основном конфиге ссылается на TLS-файлы, которых на чистом сервере ещё нет. Поэтому прямой `docker compose up -d` на первом деплое **не запустится**. Используйте скрипт-бутстрап, он сам всё разрулит:
+
 ```bash
-CERTBOT_EMAIL=ops@example.com ./nginx/init-letsencrypt.sh
+DOMAIN=bot.example.com \
+CERTBOT_EMAIL=ops@example.com \
+    ./nginx/init-letsencrypt.sh
 ```
 
-При тестировании можно добавить `CERTBOT_STAGING=1` — cert от Let's Encrypt staging (не валидный, но rate-limit мягче).
+Скрипт делает 4 шага:
+1. Поднимает временный nginx с `nginx.bootstrap.conf` (HTTP-only на :80) — он обслуживает ACME-challenge от Let's Encrypt.
+2. Запускает certbot, получает боевой сертификат в volume `letsencrypt_certs`.
+3. Останавливает временный nginx.
+4. Запускает весь стек (`docker compose up -d`) с основным конфигом и TLS.
+
+При отладке можно добавить `CERTBOT_STAGING=1` — staging-серт (не валидный в браузере, но rate-limit мягче).
 
 ---
 
-## Шаг 3. Запуск
+## Шаг 3. Проверка запуска
 
 ```bash
-docker compose up -d
 docker compose ps
 docker compose logs -f bot
 ```
 
-При первом запуске:
-1. `db` поднимается, ждёт healthcheck.
-2. `api` / `bot` стартуют, `entrypoint.sh` выполняет `alembic upgrade head` — схема создаётся автоматически.
-3. `nginx` подставляет `${DOMAIN}` в конфиг и слушает 80/443.
-4. `certbot` сидит и раз в 12 часов пробует обновить серт.
+Порядок старта сервисов:
+1. `db` и `redis` — базовые сервисы с healthcheck.
+2. `migrate` — one-shot сервис: выполняет `alembic upgrade head` и выходит с кодом 0.
+3. `bot`, `api`, `worker*`, `beat` — стартуют, когда `migrate` завершился успешно (`depends_on: condition: service_completed_successfully`). Никаких гонок за схемой.
+4. `nginx` подставляет `${DOMAIN}` в конфиг и проксирует на `api`.
+5. `certbot` раз в 12 часов пробует обновить серт.
+6. `db_backup` ждёт ближайшие `BACKUP_HOUR_UTC:00` UTC (по умолчанию 03:00) и делает `pg_dump`.
 
 ---
 

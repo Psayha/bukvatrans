@@ -1,20 +1,16 @@
 #!/bin/sh
-# Container entrypoint: apply DB migrations, then exec the target command.
+# Container entrypoint.
 #
-# Only the primary "migrator" roles (api, bot) run alembic. Workers and beat
-# skip the migration step to avoid races when multiple replicas boot
-# simultaneously.
+# Schema migrations are owned by the `migrate` one-shot service in
+# docker-compose, which runs `alembic upgrade head` before any long-running
+# role starts. This entrypoint just waits for the DB to become reachable
+# (useful when `depends_on` isn't available — e.g., bare docker runs) and
+# execs the target command.
 set -e
 
-case "$ROLE" in
-    api|bot|migrate)
-        echo "[entrypoint] applying alembic migrations..."
-        alembic upgrade head
-        ;;
-    *)
-        # For worker / beat: best-effort wait for migrations to settle.
-        # Primary will have run alembic; we just ensure DB is reachable.
-        python -c "
+# Wait for DB — cheap probe, skip if no DATABASE_URL configured (tests).
+if [ -n "${DATABASE_URL:-}" ] && [ "$ROLE" != "migrate" ]; then
+    python -c "
 import asyncio, sys
 from sqlalchemy import text
 from src.db.base import async_session_factory
@@ -31,7 +27,6 @@ async def _probe():
 
 asyncio.run(_probe())
 " || exit 1
-        ;;
-esac
+fi
 
 exec "$@"

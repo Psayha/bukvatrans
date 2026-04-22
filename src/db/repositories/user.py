@@ -29,10 +29,11 @@ async def get_or_create_user(
         await session.commit()
         return user, False
 
-    # Validate referrer exists (and is not self) before wiring it up.
+    # Validate referrer exists, isn't self, and isn't banned. Banned users
+    # shouldn't be able to keep farming referral bonuses through new signups.
     if referrer_id is not None:
         referrer = await get_user(referrer_id, session)
-        if not referrer or referrer.id == user_id:
+        if not referrer or referrer.id == user_id or referrer.is_banned:
             referrer_id = None
 
     user = User(

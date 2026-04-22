@@ -26,41 +26,79 @@ async def cmd_language(message: Message) -> None:
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, user: User, session: AsyncSession) -> None:
-    """Cancel the most recent still-running transcription for this user."""
-    result = await session.execute(
-        select(Transcription)
-        .where(
-            Transcription.user_id == user.id,
-            Transcription.status.in_(["pending", "processing"]),
-        )
-        .order_by(Transcription.created_at.desc())
-        .limit(1)
-    )
-    t = result.scalar_one_or_none()
-    if not t:
-        await message.answer(CANCEL_NO_TASK)
+    """Cancel the most recent still-running transcription for this user.
+
+    The status transition + refund runs in a single transaction with a row
+    lock on the transcription. That way, if the worker is already running
+    `_refund_and_notify` concurrently, exactly one of them wins and the
+    other sees status != pending/processing and skips the refund.
+    """
+    # Make sure any autobegin tx from earlier middleware is closed, so the
+    # `session.begin()` below doesn't trip "already active".
+    await session.rollback()
+
+    revoked_task_id: str | None = None
+    refunded = False
+    try:
+        async with session.begin():
+            # Find the most recent in-flight job AND lock it.
+            stmt = (
+                select(Transcription)
+                .where(
+                    Transcription.user_id == user.id,
+                    Transcription.status.in_(["pending", "processing"]),
+                )
+                .order_by(Transcription.created_at.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            try:
+                result = await session.execute(stmt)
+            except Exception:
+                # SQLite doesn't support FOR UPDATE; fall back to plain read.
+                result = await session.execute(
+                    select(Transcription)
+                    .where(
+                        Transcription.user_id == user.id,
+                        Transcription.status.in_(["pending", "processing"]),
+                    )
+                    .order_by(Transcription.created_at.desc())
+                    .limit(1)
+                )
+            t = result.scalar_one_or_none()
+            if not t:
+                # Nothing to cancel. Exit without touching state — the
+                # enclosing session.begin() will commit a no-op.
+                await message.answer(CANCEL_NO_TASK)
+                return
+
+            t.status = "cancelled"
+            revoked_task_id = t.celery_task_id
+
+            if (t.seconds_charged or 0) > 0:
+                # Row-lock the user too so concurrent credits serialize.
+                try:
+                    locked = await session.get(User, user.id, with_for_update=True)
+                except Exception:
+                    locked = await session.get(User, user.id)
+                if locked is not None:
+                    locked.balance_seconds = (locked.balance_seconds or 0) + t.seconds_charged
+                    refunded = True
+    except Exception:
+        # Transaction rolled back; surface a generic error, don't leak details.
+        await message.answer("❌ Не удалось отменить задачу. Попробуйте ещё раз.")
         return
 
-    # Mark as cancelled so the worker short-circuits if it's still queued; a
-    # running task will finish but the result will be discarded below via status
-    # check in worker code (not implemented inline — best-effort cancel).
-    t.status = "cancelled"
-    await session.commit()
-
-    # Revoke the Celery task if we recorded its id.
-    if t.celery_task_id:
+    # Best-effort revoke happens AFTER commit so we don't try to cancel a
+    # Celery task for a transition that ended up rolled back.
+    if revoked_task_id:
         try:
             from src.worker.app import app as celery_app
-            celery_app.control.revoke(t.celery_task_id, terminate=False)
+            celery_app.control.revoke(revoked_task_id, terminate=False)
         except Exception:
             pass
 
-    # Refund any charged seconds.
-    if (t.seconds_charged or 0) > 0:
-        user.balance_seconds = (user.balance_seconds or 0) + t.seconds_charged
-        await session.commit()
-
-    await message.answer(CANCEL_SUCCESS)
+    await message.answer(CANCEL_SUCCESS if not refunded else CANCEL_SUCCESS)
 
 
 @router.message(Command("privacy"))

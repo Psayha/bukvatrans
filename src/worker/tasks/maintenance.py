@@ -72,8 +72,23 @@ def purge_old_transcription_text():
 
 
 async def _purge_old_transcription_text():
+    """Zero out every field that could contain user PII on old rows.
+
+    Purged:
+      - result_text / summary_text  (the speech content)
+      - source_url                  (may include filename / auth token
+                                     e.g. a Google Drive share link with
+                                     the owner's profile in the URL)
+      - file_name                   (original upload filename)
+      - error_message               (may leak paths / URLs in stack traces)
+
+    Retained:
+      - duration_seconds, seconds_charged, status, created_at, completed_at,
+        source_type, file_unique_id  (all needed for billing audit trail;
+        file_unique_id is a Telegram hash, not PII).
+    """
     from datetime import timedelta
-    from sqlalchemy import update
+    from sqlalchemy import or_, update
     from src.config import settings
     from src.db.base import async_session_factory
     from src.db.models.transcription import Transcription
@@ -85,12 +100,23 @@ async def _purge_old_transcription_text():
             update(Transcription)
             .where(
                 Transcription.completed_at < cutoff,
-                # Only touch rows that still carry text. Avoids churning
-                # millions of already-purged rows on every sweep.
-                (Transcription.result_text.isnot(None))
-                | (Transcription.summary_text.isnot(None)),
+                # Only touch rows that still carry any of the PII fields —
+                # keeps the sweep cheap once the backlog is drained.
+                or_(
+                    Transcription.result_text.isnot(None),
+                    Transcription.summary_text.isnot(None),
+                    Transcription.source_url.isnot(None),
+                    Transcription.file_name.isnot(None),
+                    Transcription.error_message.isnot(None),
+                ),
             )
-            .values(result_text=None, summary_text=None)
+            .values(
+                result_text=None,
+                summary_text=None,
+                source_url=None,
+                file_name=None,
+                error_message=None,
+            )
         )
         await session.commit()
     logger.info("purged_transcription_text rows=%s cutoff=%s", result.rowcount, cutoff)

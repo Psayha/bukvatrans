@@ -244,6 +244,10 @@ async def _refund_and_notify(transcription_id: str, user_id: int, error_message:
                 t = await session.get(Transcription, transcription_id)
                 if t is None:
                     return
+                # Idempotency: if the user (or a previous retry) already
+                # moved the job out of pending/processing, don't double-refund.
+                if t.status not in ("pending", "processing"):
+                    return
                 if (t.seconds_charged or 0) > 0:
                     try:
                         user = await session.get(User, user_id, with_for_update=True)

@@ -28,8 +28,8 @@ def upgrade() -> None:
         sa.Column("referrer_id", sa.BigInteger(), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("is_banned", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("is_admin", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -43,7 +43,7 @@ def upgrade() -> None:
         sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.Column("yukassa_sub_id", sa.String(255), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_subscriptions_user_status", "subscriptions", ["user_id", "status"])
@@ -58,7 +58,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False),
         sa.Column("yukassa_id", sa.String(255), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_transactions_user_id", "transactions", ["user_id"])
@@ -82,7 +82,7 @@ def upgrade() -> None:
         sa.Column("celery_task_id", sa.String(255), nullable=True),
         sa.Column("seconds_charged", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("is_free", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -96,7 +96,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.BigInteger(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("action", sa.String(50), nullable=False),
         sa.Column("meta", sa.JSON(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_usage_log_user_id_created", "usage_log", ["user_id", "created_at"])
@@ -107,7 +107,7 @@ def upgrade() -> None:
         sa.Column("referrer_id", sa.BigInteger(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("referred_id", sa.BigInteger(), sa.ForeignKey("users.id"), nullable=False, unique=True),
         sa.Column("bonus_earned_rub", sa.Numeric(10, 2), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -121,7 +121,7 @@ def upgrade() -> None:
         sa.Column("used_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -130,7 +130,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("promo_code_id", sa.Integer(), sa.ForeignKey("promo_codes.id"), nullable=False),
         sa.Column("user_id", sa.BigInteger(), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("promo_code_id", "user_id"),
     )
