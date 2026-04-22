@@ -68,7 +68,7 @@ async def handle_url(message: Message, user: User, session: AsyncSession) -> Non
         await decrement_free_uses(user.id, session)
 
     from src.worker.tasks.transcription import transcribe_task
-    task = transcribe_task.delay(
+    transcribe_task.delay(
         transcription_id=transcription.id,
         user_id=user.id,
         source_url=url,

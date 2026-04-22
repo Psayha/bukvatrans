@@ -10,7 +10,6 @@ class TestTranscriptionTaskHelpers:
         """Test that the correct Telegram API URL is constructed."""
         # Import only the helper function, mocking celery at module level
         with patch.dict("sys.modules", {"celery": MagicMock(), "celery.utils.log": MagicMock()}):
-            from importlib import import_module
             import sys
             # Remove cached module to allow re-import with mock
             sys.modules.pop("src.worker.tasks.transcription", None)

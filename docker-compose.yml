@@ -1,35 +1,160 @@
 version: "3.9"
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
+  # One-shot service that runs `alembic upgrade head` and exits. Every
+  # long-running service `depends_on: migrate: service_completed_successfully`
+  # so app containers never race the schema.
+  migrate:
+    build: .
+    environment:
+      ROLE: migrate
+    command: alembic upgrade head
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    logging: *default-logging
+
   bot:
     build: .
+    environment:
+      ROLE: bot
     command: python -m src.bot.main
     env_file: .env
-    depends_on: [db, redis]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
 
   worker:
     build: .
-    command: celery -A src.worker.app worker --loglevel=info --concurrency=4
+    environment:
+      ROLE: worker
+    command: celery -A src.worker.app worker -Q transcription -n transcription@%h --loglevel=info --concurrency=8
     env_file: .env
-    depends_on: [db, redis]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    # stop_grace_period must be >= CELERY_TIME_LIMIT (2100s) + worker_shutdown_timeout buffer
+    # so a 35-minute transcription can finish instead of being SIGKILL'd on deploy.
+    stop_grace_period: 2400s
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.worker.app inspect ping -d transcription@$$HOSTNAME || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+
+  worker_summary:
+    build: .
+    environment:
+      ROLE: worker_summary
+    command: celery -A src.worker.app worker -Q summary -n summary@%h --loglevel=info --concurrency=4
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 300s
+    logging: *default-logging
+
+  worker_maintenance:
+    build: .
+    environment:
+      ROLE: worker_maintenance
+    command: celery -A src.worker.app worker -Q maintenance -n maintenance@%h --loglevel=info --concurrency=1
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 60s
+    logging: *default-logging
 
   beat:
     build: .
+    environment:
+      ROLE: beat
     command: celery -A src.worker.app beat --loglevel=info
     env_file: .env
-    depends_on: [redis]
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
 
   api:
     build: .
+    environment:
+      ROLE: api
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     env_file: .env
-    ports:
-      - "8000:8000"
-    depends_on: [db, redis]
+    # No public port — nginx fronts the API.
+    expose:
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      - letsencrypt_certs:/etc/letsencrypt:ro
+      - letsencrypt_www:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    # Substitute ${DOMAIN} into the template at container start.
+    command: >
+      /bin/sh -c "envsubst '$$DOMAIN' < /etc/nginx/templates/default.conf.template
+                  > /etc/nginx/nginx.conf
+                  && nginx -g 'daemon off;'"
+    restart: unless-stopped
+    logging: *default-logging
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - letsencrypt_certs:/etc/letsencrypt
+      - letsencrypt_www:/var/www/certbot
+    # Check for renewal every 12h. Certbot only renews certs within 30d of expiry.
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet && sleep 12h & wait $${!}; done'
+    restart: unless-stopped
+    logging: *default-logging
 
   db:
     image: postgres:16-alpine
@@ -40,6 +165,34 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot -d transcribe_bot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+
+  db_backup:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: bot
+      POSTGRES_DB: transcribe_bot
+      PGPASSWORD: ${DB_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-3}
+    volumes:
+      - ./scripts/db_backup.sh:/usr/local/bin/db_backup.sh:ro
+      - ./scripts/db_backup_loop.sh:/usr/local/bin/db_backup_loop.sh:ro
+      - db_backups:/backups
+    # Busybox-compatible loop: sleep until the next `$BACKUP_HOUR_UTC`:00 UTC,
+    # run the dump, repeat. No GNU-style `date -d` involved.
+    entrypoint: ["/bin/sh", "/usr/local/bin/db_backup_loop.sh"]
+    restart: unless-stopped
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
@@ -47,7 +200,17 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
 
 volumes:
   postgres_data:
   redis_data:
+  db_backups:
+  letsencrypt_certs:
+  letsencrypt_www:
+  nginx_logs:

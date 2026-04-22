@@ -10,9 +10,24 @@ from src.worker.app import app
 logger = get_task_logger(__name__)
 
 
+def _run_async(coro):
+    """Run a coroutine in a fresh event loop each task invocation.
+
+    Celery's prefork workers don't always have a ready event loop; creating
+    a fresh one avoids "no running event loop" / "loop is closed" errors in
+    Python 3.12.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 @app.task(name="src.worker.tasks.maintenance.expire_subscriptions")
 def expire_subscriptions():
-    asyncio.get_event_loop().run_until_complete(_expire_subscriptions())
+    return _run_async(_expire_subscriptions())
 
 
 async def _expire_subscriptions():
@@ -44,20 +59,88 @@ def cleanup_tmp_files():
     logger.info(f"Cleaned up {count} temp files.")
 
 
+@app.task(name="src.worker.tasks.maintenance.purge_old_transcription_text")
+def purge_old_transcription_text():
+    """Erase user-generated transcript text older than the retention window.
+
+    Telegram keeps the delivered message in the user's chat history, so the
+    copy we hold server-side is just a caching convenience and a risk surface
+    for 152-ФЗ / privacy reasons. We keep metadata (duration, status, price)
+    indefinitely for billing audits, but wipe the speech content.
+    """
+    return _run_async(_purge_old_transcription_text())
+
+
+async def _purge_old_transcription_text():
+    """Zero out every field that could contain user PII on old rows.
+
+    Purged:
+      - result_text / summary_text  (the speech content)
+      - source_url                  (may include filename / auth token
+                                     e.g. a Google Drive share link with
+                                     the owner's profile in the URL)
+      - file_name                   (original upload filename)
+      - error_message               (may leak paths / URLs in stack traces)
+
+    Retained:
+      - duration_seconds, seconds_charged, status, created_at, completed_at,
+        source_type, file_unique_id  (all needed for billing audit trail;
+        file_unique_id is a Telegram hash, not PII).
+    """
+    from datetime import timedelta
+    from sqlalchemy import or_, update
+    from src.config import settings
+    from src.db.base import async_session_factory
+    from src.db.models.transcription import Transcription
+
+    cutoff = datetime.utcnow() - timedelta(days=settings.TRANSCRIPTION_RETENTION_DAYS)
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            update(Transcription)
+            .where(
+                Transcription.completed_at < cutoff,
+                # Only touch rows that still carry any of the PII fields —
+                # keeps the sweep cheap once the backlog is drained.
+                or_(
+                    Transcription.result_text.isnot(None),
+                    Transcription.summary_text.isnot(None),
+                    Transcription.source_url.isnot(None),
+                    Transcription.file_name.isnot(None),
+                    Transcription.error_message.isnot(None),
+                ),
+            )
+            .values(
+                result_text=None,
+                summary_text=None,
+                source_url=None,
+                file_name=None,
+                error_message=None,
+            )
+        )
+        await session.commit()
+    logger.info("purged_transcription_text rows=%s cutoff=%s", result.rowcount, cutoff)
+
+
 @app.task(name="src.worker.tasks.maintenance.check_dead_letter_queue")
 def check_dead_letter_queue():
-    asyncio.get_event_loop().run_until_complete(_check_dlq())
+    return _run_async(_check_dlq())
 
 
 async def _check_dlq():
     import redis.asyncio as aioredis
+
     from src.config import settings
+    from src.utils import metrics
 
     redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-    count = await redis.llen("celery_dlq")
-    if count > 5:
-        logger.warning(f"DLQ has {count} messages!")
-        # Send alert to admin
-        for admin_id in settings.admin_ids_list:
+    try:
+        count = await redis.llen("celery_dlq")
+        metrics.dlq_size.set(count)
+        if count > 5:
+            logger.warning(f"DLQ has {count} messages!")
             from src.services.notification import send_message
-            await send_message(admin_id, f"⚠️ DLQ: {count} мёртвых задач!")
+            for admin_id in settings.admin_ids_list:
+                await send_message(admin_id, f"⚠️ DLQ: {count} мёртвых задач!")
+    finally:
+        await redis.close()

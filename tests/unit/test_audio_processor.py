@@ -1,13 +1,12 @@
 import pytest
 from pathlib import Path
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 
 from src.services.audio_processor import (
     split_audio,
     merge_transcriptions,
     needs_chunking,
     GROQ_MAX_FILE_BYTES,
-    CHUNK_DURATION_SECONDS,
 )
 
 

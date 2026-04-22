@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from src.services.summary import generate_summary, _prepare_text, MAX_TEXT_LENGTH, CHUNK_SIZE
+from src.services.summary import generate_summary, _prepare_text, MAX_TEXT_LENGTH
 
 
 class TestPrepareText:

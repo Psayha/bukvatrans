@@ -6,7 +6,6 @@ celery module in sys.modules before importing worker modules.
 import sys
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timedelta
 
 # ---------------------------------------------------------------------------
 # Setup: inject fake celery into sys.modules so worker imports don't fail
@@ -53,9 +52,21 @@ def _install_celery_mock():
     sentry_celery_beat_mock = MagicMock()
     sentry_celery_utils_mock = MagicMock()
 
+    signals_mock = MagicMock()
+    # Signals expose a `.connect` decorator we use in worker/app.py.
+    for sig_name in ("worker_ready", "worker_shutting_down", "task_prerun", "task_postrun"):
+        sig = MagicMock()
+        sig.connect = lambda fn=None, **kw: (fn if fn is not None else (lambda f: f))
+        setattr(signals_mock, sig_name, sig)
+
+    exceptions_mock = MagicMock()
+    exceptions_mock.SoftTimeLimitExceeded = type("SoftTimeLimitExceeded", (Exception,), {})
+
     updates = {
         "celery": celery_mock,
         "celery.schedules": schedules_mock,
+        "celery.signals": signals_mock,
+        "celery.exceptions": exceptions_mock,
         "celery.utils": MagicMock(),
         "celery.utils.log": utils_log_mock,
         "celery.beat": beat_mock,

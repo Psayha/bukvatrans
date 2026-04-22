@@ -1,6 +1,5 @@
 """Additional validator edge cases."""
-import pytest
-from src.utils.validators import is_allowed_url, SUPPORTED_DOMAINS
+from src.utils.validators import is_allowed_url
 
 
 class TestUrlEdgeCases:

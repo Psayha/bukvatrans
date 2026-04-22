@@ -17,12 +17,16 @@ redis==5.2.0
 celery[redis]==5.4.0
 
 # Validation / Config
-pydantic==2.10.3
+# aiogram 3.13.1 pins pydantic<2.10, so we stay on the 2.9.x line.
+pydantic==2.9.2
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
 
 # Audio/Video
 yt-dlp==2024.11.18
+
+# Payments
+yookassa==3.5.0
 
 # Summarization
 anthropic==0.39.0
@@ -30,9 +34,10 @@ anthropic==0.39.0
 # File formats
 python-docx==1.1.2
 
-# Logging
+# Logging / metrics
 structlog==24.4.0
 sentry-sdk[fastapi]==2.19.0
+prometheus-client==0.21.0
 
 # Utils
 python-multipart==0.0.18

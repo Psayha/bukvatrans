@@ -1,4 +1,3 @@
-import pytest
 from datetime import datetime, timedelta
 from src.db.models.user import User
 from src.db.models.subscription import Subscription

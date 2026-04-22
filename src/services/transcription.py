@@ -42,6 +42,11 @@ async def transcribe_chunk(
         return data.get("text", "")
 
 
+# Cap concurrent Groq requests so long transcriptions don't trip the
+# per-minute rate limit. Groq's free tier is ~20 RPM on whisper-large-v3-turbo.
+GROQ_MAX_CONCURRENCY = 5
+
+
 async def transcribe_audio(
     audio_path: Path,
     language: str = "ru",
@@ -60,6 +65,13 @@ async def transcribe_audio(
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         chunks = await split_audio(audio_path, Path(tmp_dir))
-        tasks = [transcribe_chunk(chunk, language=language, api_key=api_key) for chunk in chunks]
-        texts = await asyncio.gather(*tasks)
+        # Bounded concurrency — Semaphore is bound to the current event loop,
+        # which matches the per-task loop created by the Celery worker.
+        sem = asyncio.Semaphore(GROQ_MAX_CONCURRENCY)
+
+        async def _bounded(chunk):
+            async with sem:
+                return await transcribe_chunk(chunk, language=language, api_key=api_key)
+
+        texts = await asyncio.gather(*(_bounded(c) for c in chunks))
         return merge_transcriptions(list(texts)), []

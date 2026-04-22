@@ -1,5 +1,4 @@
 """Tests for inline keyboard builders."""
-import pytest
 from src.bot.keyboards.inline import (
     transcription_result_kb,
     subscribe_kb,

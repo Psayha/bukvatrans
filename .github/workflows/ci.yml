@@ -48,21 +48,23 @@ jobs:
 
       - name: Run unit tests
         env:
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
-          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: "redis://localhost:6379/0"
           BOT_TOKEN: "0000000000:test"
           GROQ_API_KEY: "test"
           CLAUDE_API_KEY: "test"
-        run: pytest tests/unit/ -v --cov=src --cov-report=xml --cov-fail-under=60
+        # No --cov-fail-under here — coverage threshold is checked AFTER the
+        # integration suite runs on --cov-append, so both sets contribute.
+        run: pytest tests/unit/ -v --cov=src --cov-report=xml
 
-      - name: Run integration tests
+      - name: Run integration tests + enforce coverage threshold
         env:
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
-          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: "redis://localhost:6379/0"
           BOT_TOKEN: "0000000000:test"
           GROQ_API_KEY: "test"
           CLAUDE_API_KEY: "test"
-        run: pytest tests/integration/ -v --cov=src --cov-report=xml --cov-append
+        run: pytest tests/integration/ -v --cov=src --cov-report=xml --cov-append --cov-fail-under=60
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -87,10 +89,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to VPS
+        # Migrations are applied by the dedicated `migrate` compose service
+        # — `docker compose up -d --wait` blocks until it completes.
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
             cd /app && git pull &&
             docker compose pull &&
-            docker compose up -d --build &&
-            docker compose exec -T bot alembic upgrade head
+            docker compose up -d --build --wait
           '

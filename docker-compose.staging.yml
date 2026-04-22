@@ -1,0 +1,34 @@
+# Staging overlay.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+#
+# The overlay:
+#   - points nginx at port 8080 (no TLS) so you can bring it up on a second
+#     machine without touching DNS
+#   - drops backups to keep disk usage low
+#   - runs worker with concurrency=2 (staging has smaller load)
+#   - caps stop_grace_period so staging redeploys are fast
+services:
+  nginx:
+    # Staging binds an extra 8080 for easy testing without DNS; base's 80/443
+    # mappings still apply but nginx.staging.conf only listens on :80 inside.
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.staging.conf:/etc/nginx/templates/default.conf.template:ro
+      - nginx_logs:/var/log/nginx
+
+  certbot:
+    profiles: ["disabled"]
+
+  db_backup:
+    profiles: ["disabled"]
+
+  worker:
+    command: celery -A src.worker.app worker -Q transcription -n transcription@%h --loglevel=info --concurrency=2
+    stop_grace_period: 300s
+
+  worker_summary:
+    command: celery -A src.worker.app worker -Q summary -n summary@%h --loglevel=info --concurrency=2
+    stop_grace_period: 60s

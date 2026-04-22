@@ -1,11 +1,12 @@
+import uuid
 from typing import Optional
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.services.billing import calculate_referral_bonus_rub, rub_to_seconds
-from src.db.repositories.user import add_balance, get_user
-from src.db.models.referral import Referral
 from src.db.models.transaction import Transaction
-import uuid
+from src.db.models.user import User
+from src.services.billing import calculate_referral_bonus_rub, rub_to_seconds
 
 
 def calculate_bonus_seconds(payment_amount_rub: float) -> float:
@@ -13,23 +14,37 @@ def calculate_bonus_seconds(payment_amount_rub: float) -> float:
     return calculate_referral_bonus_rub(payment_amount_rub)
 
 
+async def _lock_referrer(user_id: int, session: AsyncSession) -> Optional[User]:
+    stmt = select(User).where(User.id == user_id).with_for_update()
+    try:
+        result = await session.execute(stmt)
+    except Exception:
+        result = await session.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
 async def process_referral_bonus(
     referrer_id: Optional[int],
     payment_amount_rub: float,
     session: AsyncSession,
+    autocommit: bool = True,
 ) -> None:
-    """Credit referral bonus to referrer if applicable."""
+    """Credit referral bonus to referrer.
+
+    When called from within an outer `session.begin()` block, pass
+    `autocommit=False` so the caller controls commit boundaries.
+    """
     if referrer_id is None:
         return
 
-    referrer = await get_user(referrer_id, session)
+    referrer = await _lock_referrer(referrer_id, session)
     if not referrer:
         return
 
     bonus_rub = calculate_referral_bonus_rub(payment_amount_rub)
     bonus_seconds = rub_to_seconds(bonus_rub)
 
-    await add_balance(referrer_id, bonus_seconds, session)
+    referrer.balance_seconds = (referrer.balance_seconds or 0) + bonus_seconds
 
     transaction = Transaction(
         id=str(uuid.uuid4()),
@@ -41,4 +56,6 @@ async def process_referral_bonus(
         description=f"Реферальный бонус 20% от {payment_amount_rub}₽",
     )
     session.add(transaction)
-    await session.commit()
+
+    if autocommit:
+        await session.commit()

@@ -515,9 +515,11 @@ class TestPromoHandler:
             MagicMock(**{"scalar_one_or_none.return_value": None}),  # not yet used
         ]
         session.execute = AsyncMock(side_effect=results)
+        # The new handler calls session.get(User, ..., with_for_update=True)
+        # to row-lock the user before crediting seconds.
+        session.get = AsyncMock(return_value=user)
 
-        with patch("src.bot.handlers.promo.add_balance", return_value=user):
-            await process_promo(msg, user=user, session=session, state=state)
+        await process_promo(msg, user=user, session=session, state=state)
 
         msg.answer.assert_called_once()
         assert "2 ч" in msg.answer.call_args[0][0] or "ч" in msg.answer.call_args[0][0]
@@ -530,12 +532,16 @@ class TestPromoHandler:
 class TestReferralHandler:
     @pytest.mark.asyncio
     async def test_cmd_referral(self):
+        from sqlalchemy.ext.asyncio import AsyncSession
+
         from src.bot.handlers.referral import cmd_referral
 
         msg = make_message("/referral")
         user = make_user()
+        session = AsyncMock(spec=AsyncSession)
+        session.scalar = AsyncMock(side_effect=[5, 150.0])
 
-        await cmd_referral(msg, user=user)
+        await cmd_referral(msg, user=user, session=session)
 
         msg.answer.assert_called_once()
         text = msg.answer.call_args[0][0]
@@ -970,23 +976,18 @@ class TestCallbacksHandler:
     @pytest.mark.asyncio
     async def test_cb_language_sets_redis(self):
         import sys
-        from sqlalchemy.ext.asyncio import AsyncSession
 
         cb = make_callback("lang:ru")
         user = make_user()
-        session = AsyncMock(spec=AsyncSession)
 
-        # `import redis.asyncio as aioredis` returns sys.modules['redis'].asyncio
-        # so configure the parent redis mock's .asyncio.from_url
         mock_redis_client = AsyncMock()  # all attrs auto-async
-
         redis_mod = sys.modules.get("redis", MagicMock())
         redis_mod.asyncio.from_url.return_value = mock_redis_client
 
         from src.bot.handlers.callbacks import cb_language
-        with patch("src.config.settings") as mock_settings:
-            mock_settings.REDIS_URL = "redis://localhost"
-            await cb_language(cb, user=user, session=session)
+        with patch("src.bot.handlers.callbacks.settings") as mock_settings:
+            mock_settings.redis_cache_url = "redis://localhost/1"
+            await cb_language(cb, user=user)
 
         mock_redis_client.set.assert_called_once()
         cb.message.edit_text.assert_called_once()

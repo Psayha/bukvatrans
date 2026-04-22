@@ -1,7 +1,7 @@
 """Unit tests for bot middlewares."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from aiogram.types import Message, Update, User as TgUser
+from aiogram.types import Message, User as TgUser
 
 
 def make_tg_user(user_id: int = 123, username: str = "test") -> TgUser:
@@ -46,7 +46,7 @@ class TestBanMiddleware:
         normal_user = User(id=1, is_banned=False)
         data = {"user": normal_user}
 
-        result = await middleware(handler, event, data)
+        await middleware(handler, event, data)
         handler.assert_called_once_with(event, data)
 
     @pytest.mark.asyncio

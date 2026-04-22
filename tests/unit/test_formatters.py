@@ -1,4 +1,3 @@
-import pytest
 from src.utils.formatters import format_duration, format_balance, format_price
 
 

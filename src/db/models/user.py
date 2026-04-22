@@ -18,6 +18,7 @@ class User(Base):
     first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     language_code: Mapped[str] = mapped_column(String(10), default="ru")
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     balance_seconds: Mapped[int] = mapped_column(Integer, default=0)
     free_uses_left: Mapped[int] = mapped_column(Integer, default=3)
     referrer_id: Mapped[Optional[int]] = mapped_column(
