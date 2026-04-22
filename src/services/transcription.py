@@ -7,7 +7,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from src.config import settings
 
-GROQ_TRANSCRIPTION_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+# Can be pointed at a Cloudflare Worker that proxies to api.groq.com when
+# the host is geo-blocked from the server (common in RU/CN). See
+# scripts/groq_proxy_worker.js for the worker template.
+GROQ_TRANSCRIPTION_URL = f"{settings.GROQ_API_BASE.rstrip('/')}/openai/v1/audio/transcriptions"
 GROQ_MODEL = "whisper-large-v3-turbo"
 
 
