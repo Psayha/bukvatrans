@@ -85,13 +85,13 @@ async def _transcribe_async(
 ) -> dict:
     from src.db.base import async_session_factory
     from src.db.repositories.transcription import update_transcription_status, get_transcription
-    from src.db.repositories.user import get_user, deduct_balance, add_balance
+    from src.db.repositories.user import get_user, deduct_balance
     from src.services.transcription import transcribe_audio
     from src.services.audio_processor import get_audio_duration, extract_audio
     from src.services.billing import calculate_charge
     from src.services.notification import send_message, send_document
     from src.utils.formatters import format_duration, format_balance
-    from src.bot.texts.ru import TRANSCRIPTION_DONE, ERROR_TRANSCRIPTION, ERROR_DOWNLOAD
+    from src.bot.texts.ru import TRANSCRIPTION_DONE, ERROR_DOWNLOAD
 
     async with async_session_factory() as session:
         await update_transcription_status(transcription_id, "processing", session)

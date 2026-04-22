@@ -1,4 +1,3 @@
-import redis.asyncio as aioredis
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -7,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bot.keyboards.inline import language_kb
 from src.bot.texts.ru import CANCEL_NO_TASK, CANCEL_SUCCESS, LANGUAGE_PROMPT
-from src.config import settings
 from src.db.models.transcription import Transcription
 from src.db.models.user import User
 

@@ -4,7 +4,6 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models.referral import Referral
 from src.db.models.transaction import Transaction
 from src.db.models.user import User
 from src.services.billing import calculate_referral_bonus_rub, rub_to_seconds

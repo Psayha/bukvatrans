@@ -69,7 +69,7 @@ class TestFullBillingFlow:
 
     @pytest.mark.asyncio
     async def test_transaction_recorded_on_topup(self, db_session, test_user):
-        t = await create_transaction(
+        await create_transaction(
             user_id=test_user.id,
             type_="topup",
             status="success",
@@ -80,7 +80,7 @@ class TestFullBillingFlow:
         )
         await add_balance(test_user.id, 7200, db_session)
 
-        user = await get_user(test_user.id, db_session)
+        await get_user(test_user.id, db_session)
         result = await db_session.execute(
             select(Transaction).where(Transaction.yukassa_id == "yk_test_topup")
         )

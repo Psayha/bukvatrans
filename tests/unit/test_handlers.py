@@ -515,9 +515,11 @@ class TestPromoHandler:
             MagicMock(**{"scalar_one_or_none.return_value": None}),  # not yet used
         ]
         session.execute = AsyncMock(side_effect=results)
+        # The new handler calls session.get(User, ..., with_for_update=True)
+        # to row-lock the user before crediting seconds.
+        session.get = AsyncMock(return_value=user)
 
-        with patch("src.bot.handlers.promo.add_balance", return_value=user):
-            await process_promo(msg, user=user, session=session, state=state)
+        await process_promo(msg, user=user, session=session, state=state)
 
         msg.answer.assert_called_once()
         assert "2 ч" in msg.answer.call_args[0][0] or "ч" in msg.answer.call_args[0][0]

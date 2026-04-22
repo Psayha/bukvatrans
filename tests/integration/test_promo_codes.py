@@ -1,12 +1,9 @@
 """Integration tests for promo code flow."""
 import pytest
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.db.models.user import User
 from src.db.models.promo_code import PromoCode, PromoCodeUse
-from src.db.repositories.user import get_user
 
 
 class TestPromoCodeRepository:

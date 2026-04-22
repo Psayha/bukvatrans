@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import Integer, String, BigInteger, ForeignKey, Numeric, Text, func
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base

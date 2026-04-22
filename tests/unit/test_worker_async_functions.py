@@ -6,7 +6,6 @@ celery module in sys.modules before importing worker modules.
 import sys
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timedelta
 
 # ---------------------------------------------------------------------------
 # Setup: inject fake celery into sys.modules so worker imports don't fail

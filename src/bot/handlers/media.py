@@ -1,6 +1,3 @@
-import tempfile
-import uuid
-from pathlib import Path
 from typing import Optional
 
 from aiogram import Router, F
@@ -14,9 +11,9 @@ from src.services.billing import check_can_transcribe
 from src.utils.validators import validate_file_size, validate_mime_type
 from src.bot.texts.ru import (
     PROCESSING, UNSUPPORTED_FORMAT, FILE_TOO_LARGE,
-    INSUFFICIENT_BALANCE, TASK_ALREADY_RUNNING,
+    INSUFFICIENT_BALANCE,
 )
-from src.bot.keyboards.inline import subscribe_kb, transcription_result_kb
+from src.bot.keyboards.inline import subscribe_kb
 
 router = Router()
 

@@ -18,7 +18,7 @@ async def _send_daily_report():
     from src.db.models.user import User
     from src.db.models.transcription import Transcription
     from src.db.models.transaction import Transaction
-    from sqlalchemy import select, func, and_
+    from sqlalchemy import select, func
     from src.config import settings
     from src.services.notification import send_message
 

@@ -1,6 +1,5 @@
 """Tests for billing plans and topup options."""
-import pytest
-from src.services.billing import PLANS, TOPUP_OPTIONS, rub_to_seconds
+from src.services.billing import PLANS, TOPUP_OPTIONS
 
 
 class TestPlansConfig:

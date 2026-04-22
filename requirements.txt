@@ -17,7 +17,8 @@ redis==5.2.0
 celery[redis]==5.4.0
 
 # Validation / Config
-pydantic==2.10.3
+# aiogram 3.13.1 pins pydantic<2.10, so we stay on the 2.9.x line.
+pydantic==2.9.2
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
 

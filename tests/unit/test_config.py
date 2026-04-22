@@ -1,6 +1,4 @@
 """Tests for application config."""
-import pytest
-from unittest.mock import patch
 
 
 class TestSettings:

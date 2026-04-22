@@ -1,11 +1,9 @@
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models.user import User
 from src.bot.texts.ru import START_NEW_USER, START_EXISTING_USER, HELP_TEXT
-from src.bot.keyboards.inline import subscribe_kb
 from src.utils.formatters import format_balance
 
 router = Router()

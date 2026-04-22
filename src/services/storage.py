@@ -1,6 +1,5 @@
 import uuid
 from pathlib import Path
-from typing import Optional
 
 import boto3
 from botocore.client import Config

@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient, ASGITransport
-from fastapi import FastAPI
 
 from src.api.main import app
 from src.api.webhooks import _is_yukassa_ip
@@ -73,7 +72,7 @@ class TestYukassaWebhook:
 
     @pytest.mark.asyncio
     async def test_valid_ip_processes_payment(self):
-        with patch("src.api.webhooks._handle_payment_succeeded", new_callable=AsyncMock) as mock_handle:
+        with patch("src.api.webhooks._handle_payment_succeeded", new_callable=AsyncMock):
             with patch("src.api.webhooks.get_transaction_by_yukassa_id", return_value=None, new_callable=AsyncMock):
                 async with make_client() as client:
                     response = await client.post(

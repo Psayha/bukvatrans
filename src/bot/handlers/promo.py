@@ -11,7 +11,6 @@ from src.bot.states import PromoFlow
 from src.bot.texts.ru import PROMO_INVALID, PROMO_PROMPT, PROMO_SUCCESS, RATE_LIMIT
 from src.db.models.promo_code import PromoCode, PromoCodeUse
 from src.db.models.user import User
-from src.db.repositories.user import add_balance
 from src.utils import ratelimit
 
 router = Router()

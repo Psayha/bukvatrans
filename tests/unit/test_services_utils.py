@@ -2,7 +2,6 @@
 import sys
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
 
 # Mock boto3 since it's not installed in test environment
 if "boto3" not in sys.modules:
@@ -215,7 +214,7 @@ class TestStorage:
                 mock_settings.S3_ENDPOINT = "https://s3.example.com"
                 mock_settings.S3_ACCESS_KEY = "access"
                 mock_settings.S3_SECRET_KEY = "secret"
-                client = storage._get_client()
+                storage._get_client()
 
         mock_boto3.client.assert_called_once_with(
             "s3",
@@ -380,7 +379,7 @@ class TestUserMiddleware:
         event.message = None
         event.callback_query = None
 
-        result = await middleware(handler, event, {})
+        await middleware(handler, event, {})
         handler.assert_called_once()
 
     @pytest.mark.asyncio

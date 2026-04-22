@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bot.texts.ru import (
     LANGUAGE_SET,
-    SUMMARY_ERROR,
     SUMMARY_GENERATING,
     SUMMARY_READY,
 )

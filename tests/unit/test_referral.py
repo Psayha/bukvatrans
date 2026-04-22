@@ -1,5 +1,4 @@
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models.user import User
 from src.services.referral import calculate_bonus_seconds, process_referral_bonus

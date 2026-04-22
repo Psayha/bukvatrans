@@ -1,8 +1,5 @@
 import pytest
-from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models.user import User
 from src.db.repositories.user import (
     get_user, get_or_create_user, add_balance, deduct_balance, decrement_free_uses
 )

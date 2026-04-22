@@ -6,10 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.models.user import User
 from src.db.repositories.transcription import get_user_transcriptions
 from src.bot.texts.ru import (
-    PROFILE_TEXT, HISTORY_EMPTY, HISTORY_ITEM, NO_SUBSCRIPTION
+    PROFILE_TEXT, HISTORY_EMPTY, NO_SUBSCRIPTION
 )
 from src.utils.formatters import format_balance, format_duration
-from src.config import settings
 
 router = Router()
 
