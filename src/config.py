@@ -12,6 +12,10 @@ class Settings(BaseSettings):
 
     # External APIs
     GROQ_API_KEY: str = ""
+    # Override if api.groq.com is geo-blocked from the server; point this at
+    # a Cloudflare Worker (or similar HTTPS proxy) that forwards to the
+    # real host. Must NOT end with a slash.
+    GROQ_API_BASE: str = "https://api.groq.com"
     CLAUDE_API_KEY: str = ""
 
     # Payment
