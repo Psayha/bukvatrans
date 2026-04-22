@@ -48,8 +48,8 @@ jobs:
 
       - name: Run unit tests
         env:
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
-          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: "redis://localhost:6379/0"
           BOT_TOKEN: "0000000000:test"
           GROQ_API_KEY: "test"
           CLAUDE_API_KEY: "test"
@@ -57,8 +57,8 @@ jobs:
 
       - name: Run integration tests
         env:
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
-          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: "redis://localhost:6379/0"
           BOT_TOKEN: "0000000000:test"
           GROQ_API_KEY: "test"
           CLAUDE_API_KEY: "test"
