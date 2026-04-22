@@ -42,6 +42,15 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # Liveness: the bot process must be up. aiogram polling keeps a coroutine
+    # running; if it crashes the whole container exits and restart kicks in.
+    # `pgrep` against our own command is the cheapest probe.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'src.bot.main' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging: *default-logging
 
   worker:
@@ -88,6 +97,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 300s
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.worker.app inspect ping -d summary@$$HOSTNAME || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     logging: *default-logging
 
   worker_maintenance:
@@ -107,6 +122,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.worker.app inspect ping -d maintenance@$$HOSTNAME || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     logging: *default-logging
 
   beat:
@@ -123,6 +144,14 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # `beat` writes a schedule file periodically — if the process is alive
+    # the file gets touched. pgrep on the beat cmdline is enough.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' > /dev/null || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging: *default-logging
 
   api:

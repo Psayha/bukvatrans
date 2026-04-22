@@ -19,7 +19,8 @@ RUN chmod +x /app/scripts/entrypoint.sh
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -fsS http://localhost:8000/health || exit 1
+# No image-wide HEALTHCHECK: this same image runs as api / bot / celery
+# worker / beat, and each role exposes a different liveness surface. Each
+# service declares its own healthcheck in docker-compose.yml.
 
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
