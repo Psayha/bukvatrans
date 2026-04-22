@@ -37,38 +37,50 @@ class TestPrepareText:
         assert "END" in result
 
 
+def _mock_openrouter_response(text: str) -> MagicMock:
+    """Build an httpx.Response mock with the OpenAI/OpenRouter chat-completion shape."""
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json = MagicMock(return_value={
+        "choices": [{"message": {"content": text}}]
+    })
+    return response
+
+
 class TestGenerateSummary:
     @pytest.mark.asyncio
-    async def test_calls_claude_api(self):
-        mock_content = MagicMock()
-        mock_content.text = "## 📌 Ключевая мысль\nТест."
-        mock_response = MagicMock()
-        mock_response.content = [mock_content]
+    async def test_calls_openrouter(self):
+        mock_response = _mock_openrouter_response("## 📌 Ключевая мысль\nТест.")
 
-        with patch("src.services.summary.anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.messages.create = AsyncMock(return_value=mock_response)
-            mock_cls.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post = AsyncMock(return_value=mock_response)
 
+        with patch("src.services.summary.httpx.AsyncClient", return_value=mock_client):
             result = await generate_summary("Тестовый текст", api_key="test-key")
 
         assert "Ключевая мысль" in result
         assert "Тест." in result
+        mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_summary_uses_template_prompt(self):
-        mock_content = MagicMock()
-        mock_content.text = "Summary"
-        mock_response = MagicMock()
-        mock_response.content = [mock_content]
+        mock_response = _mock_openrouter_response("Summary")
 
-        with patch("src.services.summary.anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.messages.create = AsyncMock(return_value=mock_response)
-            mock_cls.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post = AsyncMock(return_value=mock_response)
 
+        with patch("src.services.summary.httpx.AsyncClient", return_value=mock_client):
             await generate_summary("Текст для теста", api_key="test-key")
 
-            call_args = mock_client.messages.create.call_args
-            messages = call_args.kwargs.get("messages") or call_args[1].get("messages")
+            # The POST payload is the second positional or the `json=` kwarg.
+            call = mock_client.post.call_args
+            payload = call.kwargs.get("json")
+            assert payload is not None
+            messages = payload["messages"]
             assert "Текст для теста" in messages[0]["content"]
+            # Default model comes from settings.
+            assert payload["model"]

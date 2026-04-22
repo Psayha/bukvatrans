@@ -1,6 +1,20 @@
+"""Summary generation via OpenRouter (OpenAI-compatible).
+
+OpenRouter is a thin gateway over many LLM providers (Claude / GPT /
+Gemini / Llama / etc.). Swapping the model is a config change:
+
+    OPENROUTER_MODEL=openai/gpt-4o-mini
+    OPENROUTER_MODEL=google/gemini-2.5-flash
+    OPENROUTER_MODEL=anthropic/claude-3.5-haiku   # default
+
+Same code, same prompt, different upstream.
+
+If the OpenRouter host is also geo-blocked from the server (RU/CN),
+set OPENROUTER_BASE_URL to a proxy — same pattern as GROQ_API_BASE.
+"""
 from typing import Optional
 
-import anthropic
+import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import settings
@@ -52,17 +66,45 @@ def _prepare_text(text: str) -> str:
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=8), reraise=True)
-async def generate_summary(text: str, api_key: Optional[str] = None) -> str:
-    """Generate a structured summary using Claude API."""
-    key = api_key or settings.CLAUDE_API_KEY
-    client = anthropic.AsyncAnthropic(api_key=key)
+async def generate_summary(
+    text: str,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> str:
+    """Generate a structured Russian summary via OpenRouter."""
+    key = api_key or settings.OPENROUTER_API_KEY
+    model = model or settings.OPENROUTER_MODEL
+    if not key:
+        raise RuntimeError("OPENROUTER_API_KEY is not configured")
 
     prepared = _prepare_text(text)
-    message = await client.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=2048,
-        messages=[
-            {"role": "user", "content": SUMMARY_PROMPT.format(text=prepared)}
-        ],
-    )
-    return message.content[0].text
+    url = f"{settings.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                # Optional: OpenRouter uses these for attribution on their
+                # leaderboards. Harmless but nice.
+                "HTTP-Referer": "https://github.com/Psayha/bukvatrans",
+                "X-Title": "bukvatrans",
+            },
+            json={
+                "model": model,
+                "max_tokens": 2048,
+                "temperature": 0.3,
+                "messages": [
+                    {"role": "user", "content": SUMMARY_PROMPT.format(text=prepared)}
+                ],
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    # OpenAI-compatible response shape.
+    try:
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(f"Unexpected OpenRouter response: {data!r}") from e

@@ -16,7 +16,13 @@ class Settings(BaseSettings):
     # a Cloudflare Worker (or similar HTTPS proxy) that forwards to the
     # real host. Must NOT end with a slash.
     GROQ_API_BASE: str = "https://api.groq.com"
-    CLAUDE_API_KEY: str = ""
+
+    # Summarization via OpenRouter (OpenAI-compatible gateway that covers
+    # Claude / GPT / Gemini / Llama behind one key). Override the model
+    # without touching code; same client works for every provider.
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODEL: str = "anthropic/claude-3.5-haiku"
 
     # Payment
     YUKASSA_SHOP_ID: str = ""
