@@ -88,12 +88,29 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to VPS
-        # Migrations are applied by the dedicated `migrate` compose service
-        # — `docker compose up -d --wait` blocks until it completes.
+      - name: Setup SSH
+        # Writes the private key from secrets.VPS_SSH_KEY into ~/.ssh, then
+        # pins the server's host key via ssh-keyscan so StrictHostKeyChecking
+        # stays enabled (no MITM window on subsequent connections).
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
-            cd /app && git pull &&
-            docker compose pull &&
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        # Schema migrations run inside the compose `migrate` service.
+        # `up -d --wait` blocks until every depends_on (including migrate
+        # completing successfully) is healthy, so a failed migration
+        # fails the deploy loudly instead of silently half-updating.
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" '
+            set -e
+            cd /srv/bukvatrans
+            git fetch origin
+            git reset --hard origin/main
+            docker compose pull
             docker compose up -d --build --wait
           '
