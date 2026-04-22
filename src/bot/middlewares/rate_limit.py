@@ -1,11 +1,11 @@
 from typing import Any, Awaitable, Callable
-from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Message
 
 import redis.asyncio as aioredis
+from aiogram import BaseMiddleware
+from aiogram.types import Message, TelegramObject
 
-from src.config import settings
 from src.bot.texts.ru import RATE_LIMIT
+from src.config import settings
 
 RATE_LIMITS = {
     "commands": {"calls": 30, "period": 60},
@@ -17,7 +17,7 @@ _redis: aioredis.Redis | None = None
 def _get_redis() -> aioredis.Redis:
     global _redis
     if _redis is None:
-        _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        _redis = aioredis.from_url(settings.redis_ratelimit_url, decode_responses=True)
     return _redis
 
 

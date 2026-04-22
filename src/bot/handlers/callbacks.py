@@ -1,10 +1,17 @@
+import redis.asyncio as aioredis
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.texts.ru import (
+    LANGUAGE_SET,
+    SUMMARY_ERROR,
+    SUMMARY_GENERATING,
+    SUMMARY_READY,
+)
+from src.config import settings
 from src.db.models.user import User
-from src.db.repositories.transcription import get_transcription, update_transcription_status
-from src.bot.texts.ru import SUMMARY_GENERATING, SUMMARY_READY, SUMMARY_ERROR
+from src.db.repositories.transcription import get_transcription
 
 router = Router()
 
@@ -47,12 +54,31 @@ async def cb_docx(callback: CallbackQuery, user: User, session: AsyncSession) ->
     docx_task.delay(transcription_id=transcription_id, user_id=user.id)
 
 
+@router.callback_query(F.data.startswith("srt:"))
+async def cb_srt(callback: CallbackQuery, user: User, session: AsyncSession) -> None:
+    transcription_id = callback.data.split(":", 1)[1]
+    transcription = await get_transcription(transcription_id, session)
+
+    if not transcription or transcription.user_id != user.id or not transcription.result_text:
+        await callback.answer("Субтитры недоступны.", show_alert=True)
+        return
+
+    await callback.answer("Генерирую SRT...")
+    from src.worker.tasks.summary import srt_task
+    srt_task.delay(transcription_id=transcription_id, user_id=user.id)
+
+
 @router.callback_query(F.data.startswith("lang:"))
-async def cb_language(callback: CallbackQuery, user: User, session: AsyncSession) -> None:
+async def cb_language(callback: CallbackQuery, user: User) -> None:
     lang = callback.data.split(":", 1)[1]
-    import redis.asyncio as aioredis
-    from src.config import settings
-    redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-    await redis.set(f"lang:{user.id}", lang, ex=86400 * 30)
-    await callback.message.edit_text(f"✅ Язык установлен: <b>{lang}</b>", parse_mode="HTML")
+    # Minimal allow-list to avoid arbitrary Redis keys from untrusted callback data.
+    if lang not in {"ru", "en", "uk", "de", "fr", "es", "it", "pl", "auto"}:
+        await callback.answer("Неизвестный язык.", show_alert=True)
+        return
+    redis = aioredis.from_url(settings.redis_cache_url, decode_responses=True)
+    try:
+        await redis.set(f"lang:{user.id}", lang, ex=86400 * 30)
+    finally:
+        await redis.close()
+    await callback.message.edit_text(LANGUAGE_SET.format(language=lang), parse_mode="HTML")
     await callback.answer()

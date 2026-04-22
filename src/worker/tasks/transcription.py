@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Optional
 
 from celery import Task
+from celery.exceptions import SoftTimeLimitExceeded
 from celery.utils.log import get_task_logger
 
 from src.worker.app import app
+from src.utils.logging import bind_job_context
 
 logger = get_task_logger(__name__)
 
@@ -17,7 +19,21 @@ class TranscriptionTask(Task):
     max_retries = 3
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
-        logger.error(f"Task {task_id} failed: {exc}")
+        logger.error("transcription_task_failed task_id=%s exc=%s", task_id, exc)
+
+
+def _run_async(coro):
+    """Run a coroutine in a fresh event loop each task invocation.
+
+    Celery workers are process-forked so `get_event_loop()` can return a loop
+    that was closed in a parent; creating a fresh one is safer.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 @app.task(
@@ -34,9 +50,29 @@ def transcribe_task(
     file_id: Optional[str] = None,
     source_url: Optional[str] = None,
 ) -> dict:
-    return asyncio.get_event_loop().run_until_complete(
+    bind_job_context(
+        transcription_id=transcription_id,
+        user_id=user_id,
+        source_type=source_type,
+    )
+    return _run_async(
         _transcribe_async(self, transcription_id, user_id, source_type, file_id, source_url)
     )
+
+
+async def _get_user_language(user_id: int) -> str:
+    """Fetch language preference from Redis; fall back to Russian."""
+    import redis.asyncio as aioredis
+    from src.config import settings
+    try:
+        r = aioredis.from_url(settings.redis_cache_url, decode_responses=True)
+        lang = await r.get(f"lang:{user_id}")
+        await r.close()
+        if lang and lang.strip():
+            return lang.strip()
+    except Exception:
+        pass
+    return "ru"
 
 
 async def _transcribe_async(
@@ -49,16 +85,13 @@ async def _transcribe_async(
 ) -> dict:
     from src.db.base import async_session_factory
     from src.db.repositories.transcription import update_transcription_status, get_transcription
-    from src.db.repositories.user import get_user, deduct_balance, decrement_free_uses
+    from src.db.repositories.user import get_user, deduct_balance, add_balance
     from src.services.transcription import transcribe_audio
     from src.services.audio_processor import get_audio_duration, extract_audio
     from src.services.billing import calculate_charge
     from src.services.notification import send_message, send_document
-    from src.bot.keyboards.inline import transcription_result_kb
     from src.utils.formatters import format_duration, format_balance
     from src.bot.texts.ru import TRANSCRIPTION_DONE, ERROR_TRANSCRIPTION, ERROR_DOWNLOAD
-    from src.config import settings
-    import httpx
 
     async with async_session_factory() as session:
         await update_transcription_status(transcription_id, "processing", session)
@@ -73,11 +106,20 @@ async def _transcribe_async(
             if file_id:
                 audio_path = await _download_telegram_file(file_id, tmp_path, source_type)
             elif source_url:
-                from src.services.downloader import download_url
+                from src.services.downloader import download_url, UnsafeURLError, URLTooLargeError
                 try:
                     audio_path = await download_url(source_url, tmp_path)
+                except (UnsafeURLError, URLTooLargeError) as e:
+                    logger.warning("url_rejected user_id=%s err=%s", user_id, e)
+                    await send_message(user_id, str(e) if isinstance(e, URLTooLargeError) else ERROR_DOWNLOAD)
+                    async with async_session_factory() as session:
+                        await update_transcription_status(
+                            transcription_id, "failed", session,
+                            error_message=str(e),
+                        )
+                    return {"status": "failed", "error": str(e)}
                 except Exception as e:
-                    logger.error(f"Download failed: {e}")
+                    logger.error("download_failed user_id=%s err=%s", user_id, e)
                     await send_message(user_id, ERROR_DOWNLOAD)
                     async with async_session_factory() as session:
                         await update_transcription_status(
@@ -94,15 +136,11 @@ async def _transcribe_async(
                 extracted = tmp_path / f"{uuid.uuid4()}.mp3"
                 audio_path = await extract_audio(audio_path, extracted)
 
-            # Get duration
             duration = await get_audio_duration(audio_path)
 
-            # Transcribe
-            async with async_session_factory() as session:
-                user = await get_user(user_id, session)
-                lang = "ru"  # TODO: fetch from Redis user preference
+            lang = await _get_user_language(user_id)
 
-            text, _ = await transcribe_audio(audio_path, language=lang)
+            text, segments = await transcribe_audio(audio_path, language=lang)
 
             # Charge balance
             seconds_charged = 0
@@ -117,8 +155,12 @@ async def _transcribe_async(
                 user = await get_user(user_id, session)
                 balance = user.balance_seconds
 
-            # Save result
+            # Save result (include detected language, segments optional)
             async with async_session_factory() as session:
+                t = await get_transcription(transcription_id, session)
+                if t:
+                    t.language = lang
+                    await session.commit()
                 await update_transcription_status(
                     transcription_id, "done", session,
                     result_text=text,
@@ -132,21 +174,23 @@ async def _transcribe_async(
                 charged=format_duration(seconds_charged) if seconds_charged else "0 (бесплатно)",
                 balance=format_balance(balance),
             )
+            buttons = [
+                [
+                    {"text": "📋 Конспект", "callback_data": f"summary:{transcription_id}"},
+                    {"text": "📄 DOCX", "callback_data": f"docx:{transcription_id}"},
+                ]
+            ]
+            if source_type in ("video", "youtube", "rutube", "vk", "ok"):
+                buttons.append(
+                    [{"text": "📑 SRT субтитры", "callback_data": f"srt:{transcription_id}"}]
+                )
             await send_message(
                 user_id,
                 done_text,
                 parse_mode="HTML",
-                reply_markup={
-                    "inline_keyboard": [
-                        [
-                            {"text": "📋 Конспект", "callback_data": f"summary:{transcription_id}"},
-                            {"text": "📄 DOCX", "callback_data": f"docx:{transcription_id}"},
-                        ]
-                    ]
-                },
+                reply_markup={"inline_keyboard": buttons},
             )
 
-            # Also send as file if text > 4096 chars
             if len(text) <= 4096:
                 await send_message(user_id, text)
             else:
@@ -155,19 +199,39 @@ async def _transcribe_async(
 
             return {"status": "done", "duration": int(duration)}
 
+        except SoftTimeLimitExceeded as e:
+            logger.error("transcription_soft_timeout user_id=%s", user_id)
+            await _refund_and_notify(transcription_id, user_id, str(e))
+            return {"status": "failed", "error": "timeout"}
         except Exception as e:
-            logger.error(f"Transcription error: {e}", exc_info=True)
-            async with async_session_factory() as session:
-                # Refund
-                t = await get_transcription(transcription_id, session)
-                if t and t.seconds_charged > 0:
-                    await add_balance_import(user_id, t.seconds_charged, session)
-                await update_transcription_status(
-                    transcription_id, "failed", session,
-                    error_message=str(e),
-                )
-            await send_message(user_id, ERROR_TRANSCRIPTION)
+            logger.error("transcription_error user_id=%s err=%s", user_id, e, exc_info=True)
+            await _refund_and_notify(transcription_id, user_id, str(e))
             return {"status": "failed", "error": str(e)}
+
+
+async def _refund_and_notify(transcription_id: str, user_id: int, error_message: str) -> None:
+    from src.db.base import async_session_factory
+    from src.db.repositories.transcription import get_transcription, update_transcription_status
+    from src.db.repositories.user import add_balance
+    from src.services.notification import send_message
+    from src.bot.texts.ru import ERROR_TRANSCRIPTION
+
+    try:
+        async with async_session_factory() as session:
+            t = await get_transcription(transcription_id, session)
+            if t and (t.seconds_charged or 0) > 0:
+                await add_balance(user_id, t.seconds_charged, session)
+            await update_transcription_status(
+                transcription_id, "failed", session,
+                error_message=error_message[:1000],
+            )
+    except Exception:
+        logger.error("refund_failed user_id=%s", user_id, exc_info=True)
+
+    try:
+        await send_message(user_id, ERROR_TRANSCRIPTION)
+    except Exception:
+        logger.warning("notify_failed user_id=%s", user_id, exc_info=True)
 
 
 async def _download_telegram_file(file_id: str, output_dir: Path, source_type: str) -> Path:
@@ -175,7 +239,6 @@ async def _download_telegram_file(file_id: str, output_dir: Path, source_type: s
     from src.config import settings
 
     async with httpx.AsyncClient(timeout=300) as client:
-        # Get file info
         r = await client.get(
             f"https://api.telegram.org/bot{settings.BOT_TOKEN}/getFile",
             params={"file_id": file_id},
@@ -184,7 +247,6 @@ async def _download_telegram_file(file_id: str, output_dir: Path, source_type: s
         file_path = r.json()["result"]["file_path"]
         ext = Path(file_path).suffix or ".ogg"
 
-        # Download
         url = f"https://api.telegram.org/file/bot{settings.BOT_TOKEN}/{file_path}"
         out_path = output_dir / f"{uuid.uuid4()}{ext}"
         async with client.stream("GET", url) as response:
@@ -193,8 +255,3 @@ async def _download_telegram_file(file_id: str, output_dir: Path, source_type: s
                 async for chunk in response.aiter_bytes(8192):
                     f.write(chunk)
         return out_path
-
-
-async def add_balance_import(user_id, seconds, session):
-    from src.db.repositories.user import add_balance
-    await add_balance(user_id, seconds, session)

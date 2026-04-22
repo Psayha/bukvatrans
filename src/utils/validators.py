@@ -1,3 +1,6 @@
+import ipaddress
+import socket
+from typing import Optional
 from urllib.parse import urlparse
 
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024   # 2 GB
@@ -30,8 +33,40 @@ SUPPORTED_DOMAINS = [
 ]
 
 
+def _is_private_ip(addr: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _host_is_private(host: Optional[str]) -> bool:
+    """Return True if host is a private/loopback IP or resolves to one."""
+    if not host:
+        return True
+    if _is_private_ip(host):
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return True  # unresolvable → treat as unsafe
+    for info in infos:
+        addr = info[4][0]
+        if _is_private_ip(addr):
+            return True
+    return False
+
+
 def is_allowed_url(url: str) -> bool:
-    """Return True if url belongs to a supported domain."""
+    """Return True if url belongs to a supported domain (no DNS resolution)."""
     if not url:
         return False
     try:
@@ -42,11 +77,32 @@ def is_allowed_url(url: str) -> bool:
         return False
     if not parsed.netloc:
         return False
-    domain = parsed.netloc.lower()
-    # Strip www. prefix
+    host = parsed.hostname or ""
+    if not host:
+        return False
+    domain = host.lower()
     if domain.startswith("www."):
         domain = domain[4:]
+    # Reject numeric-IP hosts outright — whitelisted domains never come as raw IPs.
+    if _is_private_ip(host):
+        return False
     return any(domain == d or domain.endswith("." + d) for d in SUPPORTED_DOMAINS)
+
+
+def is_safe_remote_url(url: str) -> bool:
+    """Strict check right before handing the URL to yt-dlp.
+
+    Performs live DNS resolution and rejects any host that resolves to a
+    private/loopback/link-local address, protecting against DNS rebinding
+    and host-header tricks.
+    """
+    if not is_allowed_url(url):
+        return False
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    return not _host_is_private(parsed.hostname)
 
 
 def validate_file_size(size_bytes: int) -> bool:

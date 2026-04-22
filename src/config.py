@@ -22,8 +22,24 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./test.db"
 
-    # Redis / Celery
+    # Redis / Celery (broker DB0, cache DB1, FSM DB2, rate_limit DB3)
     REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_CACHE_DB: int = 1
+    REDIS_FSM_DB: int = 2
+    REDIS_RATELIMIT_DB: int = 3
+
+    # DB pool
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 40
+
+    # CORS
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    # Limits
+    MAX_URL_DURATION_SECONDS: int = 4 * 3600
+    MAX_URL_FILESIZE_BYTES: int = 2 * 1024 * 1024 * 1024
+    CELERY_SOFT_TIME_LIMIT: int = 1800
+    CELERY_TIME_LIMIT: int = 2100
 
     # S3
     S3_ENDPOINT: str = ""
@@ -43,6 +59,31 @@ class Settings(BaseSettings):
         if not self.ADMIN_IDS:
             return []
         return [int(i.strip()) for i in self.ADMIN_IDS.split(",") if i.strip()]
+
+    @property
+    def cors_allowed_origins_list(self) -> List[str]:
+        if not self.CORS_ALLOWED_ORIGINS:
+            return []
+        return [o.strip() for o in self.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    def _redis_url_with_db(self, db: int) -> str:
+        """Return REDIS_URL with the DB suffix replaced."""
+        base = self.REDIS_URL.rstrip("/")
+        if "/" in base.split("//", 1)[-1]:
+            base = base.rsplit("/", 1)[0]
+        return f"{base}/{db}"
+
+    @property
+    def redis_cache_url(self) -> str:
+        return self._redis_url_with_db(self.REDIS_CACHE_DB)
+
+    @property
+    def redis_fsm_url(self) -> str:
+        return self._redis_url_with_db(self.REDIS_FSM_DB)
+
+    @property
+    def redis_ratelimit_url(self) -> str:
+        return self._redis_url_with_db(self.REDIS_RATELIMIT_DB)
 
 
 settings = Settings()
