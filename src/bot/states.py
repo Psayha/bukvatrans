@@ -8,6 +8,7 @@ class LanguageSelect(StatesGroup):
 class PaymentFlow(StatesGroup):
     selecting_plan = State()
     selecting_period = State()
+    awaiting_email = State()
     awaiting_payment = State()
 
 

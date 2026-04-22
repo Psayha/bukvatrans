@@ -5,7 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bot.keyboards.inline import language_kb
-from src.bot.texts.ru import CANCEL_NO_TASK, CANCEL_SUCCESS, LANGUAGE_PROMPT
+from src.bot.texts.ru import (
+    CANCEL_NO_TASK,
+    CANCEL_SUCCESS,
+    LANGUAGE_PROMPT,
+    PRIVACY_SHORT,
+    TERMS_SHORT,
+)
+from src.config import settings
 from src.db.models.transcription import Transcription
 from src.db.models.user import User
 
@@ -54,3 +61,28 @@ async def cmd_cancel(message: Message, user: User, session: AsyncSession) -> Non
         await session.commit()
 
     await message.answer(CANCEL_SUCCESS)
+
+
+@router.message(Command("privacy"))
+async def cmd_privacy(message: Message) -> None:
+    await message.answer(
+        PRIVACY_SHORT.format(
+            retention=settings.TRANSCRIPTION_RETENTION_DAYS,
+            url=settings.PRIVACY_POLICY_URL or "—",
+            email=settings.SUPPORT_EMAIL,
+        ),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
+@router.message(Command("terms"))
+async def cmd_terms(message: Message) -> None:
+    await message.answer(
+        TERMS_SHORT.format(
+            url=settings.TERMS_URL or "—",
+            email=settings.SUPPORT_EMAIL,
+        ),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )

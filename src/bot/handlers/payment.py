@@ -1,14 +1,28 @@
-from aiogram import Router, F
+import re
+
+from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.keyboards.inline import payment_link_kb, subscribe_kb, topup_kb
+from src.bot.states import PaymentFlow
+from src.bot.texts.ru import (
+    EMAIL_INVALID,
+    EMAIL_REQUEST,
+    EMAIL_SAVED,
+    PAYMENT_CREATED,
+    SUBSCRIBE_TEXT,
+)
 from src.db.models.user import User
 from src.services.billing import PLANS, TOPUP_OPTIONS
-from src.bot.texts.ru import SUBSCRIBE_TEXT, PAYMENT_CREATED
-from src.bot.keyboards.inline import subscribe_kb, topup_kb, payment_link_kb
 
 router = Router()
+
+# Permissive email check — ЮKassa and the ОФД will do strict validation.
+# This just catches obvious typos before creating a payment.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 PLAN_NAMES = {
     "basic_monthly": "Базовый — 1 месяц",
@@ -34,34 +48,47 @@ async def cmd_topup(message: Message) -> None:
     await message.answer("Выберите сумму пополнения:", reply_markup=topup_kb())
 
 
+async def _start_or_request_email(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    *,
+    plan_key: str | None = None,
+    topup_key: str | None = None,
+) -> None:
+    """Branch: if we already know the user's email, create the payment; else
+    stash the chosen plan in FSM and ask for an email."""
+    if user.email:
+        await _create_and_send_payment(
+            callback.message, user, session,
+            plan_key=plan_key, topup_key=topup_key,
+        )
+        await callback.answer()
+        return
+
+    # Ask for email, then the next message handler creates the payment.
+    await state.set_state(PaymentFlow.awaiting_email)
+    await state.update_data(plan_key=plan_key, topup_key=topup_key)
+    await callback.message.answer(EMAIL_REQUEST)
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("plan:"))
-async def cb_plan(callback: CallbackQuery, user: User, session: AsyncSession) -> None:
+async def cb_plan(
+    callback: CallbackQuery, user: User, session: AsyncSession, state: FSMContext
+) -> None:
     plan_key = callback.data.split(":", 1)[1]
     if plan_key not in PLANS:
         await callback.answer("Неизвестный тариф.", show_alert=True)
         return
-
-    plan = PLANS[plan_key]
-    plan_name = PLAN_NAMES.get(plan_key, plan_key)
-
-    payment_url = await _create_yukassa_payment(
-        user_id=user.id,
-        amount_rub=plan["price_rub"],
-        description=plan_name,
-        metadata={"plan_key": plan_key, "user_id": str(user.id)},
-        session=session,
-    )
-
-    await callback.message.answer(
-        PAYMENT_CREATED.format(plan_name=plan_name, amount=plan["price_rub"]),
-        reply_markup=payment_link_kb(payment_url),
-        parse_mode="HTML",
-    )
-    await callback.answer()
+    await _start_or_request_email(callback, user, session, state, plan_key=plan_key)
 
 
 @router.callback_query(F.data.startswith("topup:"))
-async def cb_topup(callback: CallbackQuery, user: User, session: AsyncSession) -> None:
+async def cb_topup(
+    callback: CallbackQuery, user: User, session: AsyncSession, state: FSMContext
+) -> None:
     topup_key = callback.data.split(":", 1)[1]
 
     if topup_key == "menu":
@@ -78,23 +105,67 @@ async def cb_topup(callback: CallbackQuery, user: User, session: AsyncSession) -
         await callback.answer("Неизвестный тариф.", show_alert=True)
         return
 
-    option = TOPUP_OPTIONS[topup_key]
-    option_name = f"Пополнение {TOPUP_NAMES.get(topup_key, topup_key)}"
+    await _start_or_request_email(callback, user, session, state, topup_key=topup_key)
+
+
+@router.message(PaymentFlow.awaiting_email)
+async def on_email(
+    message: Message, user: User, session: AsyncSession, state: FSMContext
+) -> None:
+    email = (message.text or "").strip().lower()
+    if not _EMAIL_RE.match(email) or len(email) > 255:
+        await message.answer(EMAIL_INVALID)
+        return
+
+    user.email = email
+    await session.commit()
+
+    data = await state.get_data()
+    plan_key = data.get("plan_key")
+    topup_key = data.get("topup_key")
+    await state.clear()
+
+    await message.answer(EMAIL_SAVED)
+    await _create_and_send_payment(
+        message, user, session, plan_key=plan_key, topup_key=topup_key
+    )
+
+
+async def _create_and_send_payment(
+    message: Message,
+    user: User,
+    session: AsyncSession,
+    *,
+    plan_key: str | None,
+    topup_key: str | None,
+) -> None:
+    if plan_key:
+        plan = PLANS[plan_key]
+        plan_name = PLAN_NAMES.get(plan_key, plan_key)
+        amount = plan["price_rub"]
+        metadata = {"plan_key": plan_key, "user_id": str(user.id)}
+    elif topup_key:
+        option = TOPUP_OPTIONS[topup_key]
+        plan_name = f"Пополнение {TOPUP_NAMES.get(topup_key, topup_key)}"
+        amount = option["price_rub"]
+        metadata = {"topup_key": topup_key, "user_id": str(user.id)}
+    else:
+        return
 
     payment_url = await _create_yukassa_payment(
         user_id=user.id,
-        amount_rub=option["price_rub"],
-        description=option_name,
-        metadata={"topup_key": topup_key, "user_id": str(user.id)},
+        amount_rub=amount,
+        description=plan_name,
+        metadata=metadata,
+        customer_email=user.email or "",
         session=session,
     )
 
-    await callback.message.answer(
-        PAYMENT_CREATED.format(plan_name=option_name, amount=option["price_rub"]),
+    await message.answer(
+        PAYMENT_CREATED.format(plan_name=plan_name, amount=amount),
         reply_markup=payment_link_kb(payment_url),
         parse_mode="HTML",
     )
-    await callback.answer()
 
 
 async def _create_yukassa_payment(
@@ -102,29 +173,53 @@ async def _create_yukassa_payment(
     amount_rub: float,
     description: str,
     metadata: dict,
+    customer_email: str,
     session: AsyncSession,
 ) -> str:
-    """Create a YuKassa payment and return the payment URL."""
-    from yookassa import Configuration, Payment
+    """Create a YuKassa payment with 54-ФЗ fiscal receipt; return pay URL."""
+    import asyncio
     import uuid as _uuid
+
+    from yookassa import Configuration, Payment
+
     from src.config import settings
 
     Configuration.account_id = settings.YUKASSA_SHOP_ID
     Configuration.secret_key = settings.YUKASSA_SECRET_KEY
 
-    import asyncio
+    # 54-ФЗ requires a fiscal receipt for every B2C payment. YuKassa
+    # forwards the receipt to the ОФД when `receipt` is attached to the
+    # payment. `vat_code` is set via YUKASSA_VAT_CODE (1 = без НДС / УСН).
+    receipt: dict = {
+        "items": [
+            {
+                "description": description[:128],
+                "quantity": "1.00",
+                "amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
+                "vat_code": settings.YUKASSA_VAT_CODE,
+                "payment_subject": "service",
+                "payment_mode": "full_payment",
+            }
+        ],
+    }
+    if customer_email:
+        receipt["customer"] = {"email": customer_email}
 
     def _create():
-        payment = Payment.create({
-            "amount": {"value": str(amount_rub), "currency": "RUB"},
-            "confirmation": {
-                "type": "redirect",
-                "return_url": f"https://t.me/{settings.BOT_TOKEN.split(':')[0]}",
+        payment = Payment.create(
+            {
+                "amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
+                "confirmation": {
+                    "type": "redirect",
+                    "return_url": f"https://t.me/{settings.BOT_TOKEN.split(':')[0]}",
+                },
+                "capture": True,
+                "description": description,
+                "metadata": metadata,
+                "receipt": receipt,
             },
-            "capture": True,
-            "description": description,
-            "metadata": metadata,
-        }, str(_uuid.uuid4()))
+            str(_uuid.uuid4()),
+        )
         return payment.confirmation.confirmation_url
 
     loop = asyncio.get_event_loop()
