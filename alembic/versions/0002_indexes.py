@@ -30,13 +30,17 @@ def upgrade() -> None:
     )
 
     # Speeds up the payment webhook idempotency check and guarantees that
-    # two concurrent webhooks cannot insert duplicate payments.
+    # two concurrent webhooks cannot insert duplicate payments. Partial
+    # predicate excludes NULL yukassa_id rows (referral_bonus transactions
+    # legitimately have no yukassa_id) and keeps semantics consistent
+    # across PostgreSQL, SQLite and MySQL where NULL uniqueness differs.
     op.create_index(
         "uq_transactions_yukassa_id",
         "transactions",
         ["yukassa_id"],
         unique=True,
-        postgresql_where=None,
+        postgresql_where=sa.text("yukassa_id IS NOT NULL"),
+        sqlite_where=sa.text("yukassa_id IS NOT NULL"),
     )
 
     # Referrer lookup for real-time counters in /referral.

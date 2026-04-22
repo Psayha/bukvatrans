@@ -39,8 +39,10 @@ app.conf.update(
     # Hard and soft timeouts protect against stuck Groq/yt-dlp calls.
     task_soft_time_limit=settings.CELERY_SOFT_TIME_LIMIT,
     task_time_limit=settings.CELERY_TIME_LIMIT,
-    # Graceful shutdown: give workers time to finish in-flight tasks.
-    worker_shutdown_timeout=60,
+    # Graceful shutdown: wait long enough for in-flight transcription tasks
+    # to finish (CELERY_TIME_LIMIT + small buffer). Matches docker-compose
+    # stop_grace_period so SIGKILL doesn't chop long jobs in half.
+    worker_shutdown_timeout=settings.CELERY_TIME_LIMIT + 60,
     broker_connection_retry_on_startup=True,
     task_routes={
         "src.worker.tasks.transcription.*": {"queue": "transcription"},

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 
 import sentry_sdk
 
@@ -9,9 +8,10 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
 
 from src.config import settings
-from src.utils.logging import _sentry_before_send, setup_logging
+from src.utils.logging import _sentry_before_send, get_logger, setup_logging
 
 setup_logging()
+log = get_logger(__name__)
 
 from src.bot.handlers import (  # noqa: E402  (must follow setup_logging)
     admin,
@@ -85,10 +85,10 @@ async def on_startup():
             url=f"{settings.WEBHOOK_HOST}/webhooks/telegram",
             secret_token=settings.WEBHOOK_SECRET,
         )
-        logging.info("webhook_set")
+        log.info("webhook_set", host=settings.WEBHOOK_HOST)
     else:
         await bot.delete_webhook()
-        logging.info("polling_mode")
+        log.info("polling_mode")
 
 
 async def main():

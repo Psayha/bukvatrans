@@ -22,7 +22,9 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    stop_grace_period: 90s
+    # stop_grace_period must be >= CELERY_TIME_LIMIT (2100s) + worker_shutdown_timeout buffer
+    # so a 35-minute transcription can finish instead of being SIGKILL'd on deploy.
+    stop_grace_period: 2400s
     healthcheck:
       test: ["CMD-SHELL", "celery -A src.worker.app inspect ping -d transcription@$$HOSTNAME || exit 1"]
       interval: 60s
@@ -32,7 +34,19 @@ services:
 
   worker_summary:
     build: .
-    command: celery -A src.worker.app worker -Q summary,maintenance -n summary@%h --loglevel=info --concurrency=4
+    command: celery -A src.worker.app worker -Q summary -n summary@%h --loglevel=info --concurrency=4
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 300s
+
+  worker_maintenance:
+    build: .
+    command: celery -A src.worker.app worker -Q maintenance -n maintenance@%h --loglevel=info --concurrency=1
     env_file: .env
     depends_on:
       db:

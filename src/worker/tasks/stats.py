@@ -10,7 +10,16 @@ logger = get_task_logger(__name__)
 
 @app.task(name="src.worker.tasks.stats.send_daily_report")
 def send_daily_report():
-    asyncio.get_event_loop().run_until_complete(_send_daily_report())
+    return _run_async(_send_daily_report())
+
+
+def _run_async(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 async def _send_daily_report():

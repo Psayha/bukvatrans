@@ -210,21 +210,36 @@ async def _transcribe_async(
 
 
 async def _refund_and_notify(transcription_id: str, user_id: int, error_message: str) -> None:
-    from src.db.base import async_session_factory
-    from src.db.repositories.transcription import get_transcription, update_transcription_status
-    from src.db.repositories.user import add_balance
-    from src.services.notification import send_message
+    """Refund charged seconds AND mark transcription failed in one transaction.
+
+    Doing both in a single `session.begin()` block prevents the split-brain
+    state where the balance was credited but the job is still "processing"
+    (which would let the user re-trigger the same refund via /cancel).
+    """
+    from datetime import datetime
+
     from src.bot.texts.ru import ERROR_TRANSCRIPTION
+    from src.db.base import async_session_factory
+    from src.db.models.transcription import Transcription
+    from src.db.models.user import User
+    from src.services.notification import send_message
 
     try:
         async with async_session_factory() as session:
-            t = await get_transcription(transcription_id, session)
-            if t and (t.seconds_charged or 0) > 0:
-                await add_balance(user_id, t.seconds_charged, session)
-            await update_transcription_status(
-                transcription_id, "failed", session,
-                error_message=error_message[:1000],
-            )
+            async with session.begin():
+                t = await session.get(Transcription, transcription_id)
+                if t is None:
+                    return
+                if (t.seconds_charged or 0) > 0:
+                    try:
+                        user = await session.get(User, user_id, with_for_update=True)
+                    except Exception:
+                        user = await session.get(User, user_id)
+                    if user is not None:
+                        user.balance_seconds = (user.balance_seconds or 0) + t.seconds_charged
+                t.status = "failed"
+                t.error_message = error_message[:1000]
+                t.completed_at = datetime.utcnow()
     except Exception:
         logger.error("refund_failed user_id=%s", user_id, exc_info=True)
 

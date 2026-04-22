@@ -101,6 +101,10 @@ async def handle_yukassa_webhook(request: Request) -> JSONResponse:
         existing = await get_transaction_by_yukassa_id(payment_id, session)
         if existing and existing.status == "success":
             return JSONResponse({"ok": True})
+        # SQLAlchemy autobegins a transaction on the SELECT above. Roll it
+        # back so the inner handler can open a fresh `session.begin()` block
+        # without tripping "SessionTransaction is already active".
+        await session.rollback()
 
         if event == "payment.succeeded":
             await _handle_payment_succeeded(obj, idempotency_key, session)

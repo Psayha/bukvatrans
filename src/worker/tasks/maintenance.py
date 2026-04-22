@@ -10,9 +10,24 @@ from src.worker.app import app
 logger = get_task_logger(__name__)
 
 
+def _run_async(coro):
+    """Run a coroutine in a fresh event loop each task invocation.
+
+    Celery's prefork workers don't always have a ready event loop; creating
+    a fresh one avoids "no running event loop" / "loop is closed" errors in
+    Python 3.12.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 @app.task(name="src.worker.tasks.maintenance.expire_subscriptions")
 def expire_subscriptions():
-    asyncio.get_event_loop().run_until_complete(_expire_subscriptions())
+    return _run_async(_expire_subscriptions())
 
 
 async def _expire_subscriptions():
@@ -46,18 +61,21 @@ def cleanup_tmp_files():
 
 @app.task(name="src.worker.tasks.maintenance.check_dead_letter_queue")
 def check_dead_letter_queue():
-    asyncio.get_event_loop().run_until_complete(_check_dlq())
+    return _run_async(_check_dlq())
 
 
 async def _check_dlq():
     import redis.asyncio as aioredis
+
     from src.config import settings
 
     redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-    count = await redis.llen("celery_dlq")
-    if count > 5:
-        logger.warning(f"DLQ has {count} messages!")
-        # Send alert to admin
-        for admin_id in settings.admin_ids_list:
+    try:
+        count = await redis.llen("celery_dlq")
+        if count > 5:
+            logger.warning(f"DLQ has {count} messages!")
             from src.services.notification import send_message
-            await send_message(admin_id, f"⚠️ DLQ: {count} мёртвых задач!")
+            for admin_id in settings.admin_ids_list:
+                await send_message(admin_id, f"⚠️ DLQ: {count} мёртвых задач!")
+    finally:
+        await redis.close()
