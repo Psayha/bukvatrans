@@ -1,8 +1,16 @@
 version: "3.9"
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   bot:
     build: .
+    environment:
+      ROLE: bot
     command: python -m src.bot.main
     env_file: .env
     depends_on:
@@ -11,9 +19,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
 
   worker:
     build: .
+    environment:
+      ROLE: worker
     command: celery -A src.worker.app worker -Q transcription -n transcription@%h --loglevel=info --concurrency=8
     env_file: .env
     depends_on:
@@ -31,9 +42,12 @@ services:
       timeout: 15s
       retries: 3
       start_period: 30s
+    logging: *default-logging
 
   worker_summary:
     build: .
+    environment:
+      ROLE: worker_summary
     command: celery -A src.worker.app worker -Q summary -n summary@%h --loglevel=info --concurrency=4
     env_file: .env
     depends_on:
@@ -43,9 +57,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 300s
+    logging: *default-logging
 
   worker_maintenance:
     build: .
+    environment:
+      ROLE: worker_maintenance
     command: celery -A src.worker.app worker -Q maintenance -n maintenance@%h --loglevel=info --concurrency=1
     env_file: .env
     depends_on:
@@ -55,22 +72,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 60s
+    logging: *default-logging
 
   beat:
     build: .
+    environment:
+      ROLE: beat
     command: celery -A src.worker.app beat --loglevel=info
     env_file: .env
     depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
 
   api:
     build: .
+    environment:
+      ROLE: api
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     env_file: .env
-    ports:
-      - "8000:8000"
+    # No public port — nginx fronts the API.
+    expose:
+      - "8000"
     depends_on:
       db:
         condition: service_healthy
@@ -83,6 +107,39 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    logging: *default-logging
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      - letsencrypt_certs:/etc/letsencrypt:ro
+      - letsencrypt_www:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    # Substitute ${DOMAIN} into the template at container start.
+    command: >
+      /bin/sh -c "envsubst '$$DOMAIN' < /etc/nginx/templates/default.conf.template
+                  > /etc/nginx/nginx.conf
+                  && nginx -g 'daemon off;'"
+    restart: unless-stopped
+    logging: *default-logging
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - letsencrypt_certs:/etc/letsencrypt
+      - letsencrypt_www:/var/www/certbot
+    # Check for renewal every 12h. Certbot only renews certs within 30d of expiry.
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet && sleep 12h & wait $${!}; done'
+    restart: unless-stopped
+    logging: *default-logging
 
   db:
     image: postgres:16-alpine
@@ -99,6 +156,33 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging: *default-logging
+
+  db_backup:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: bot
+      POSTGRES_DB: transcribe_bot
+      PGPASSWORD: ${DB_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./scripts/db_backup.sh:/usr/local/bin/db_backup.sh:ro
+      - db_backups:/backups
+    # Run once on startup, then every 24h at 03:00 UTC.
+    entrypoint: /bin/sh -c '
+        chmod +x /usr/local/bin/db_backup.sh;
+        while true; do
+          now=$$(date -u +%s);
+          target=$$(date -u -d "tomorrow 03:00" +%s 2>/dev/null || date -u -v+1d -v03H -v00M -v00S +%s);
+          sleep $$((target - now));
+          /usr/local/bin/db_backup.sh || echo "[backup] failed";
+        done
+      '
+    restart: unless-stopped
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
@@ -111,7 +195,12 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    logging: *default-logging
 
 volumes:
   postgres_data:
   redis_data:
+  db_backups:
+  letsencrypt_certs:
+  letsencrypt_www:
+  nginx_logs:

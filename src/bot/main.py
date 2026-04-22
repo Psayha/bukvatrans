@@ -71,11 +71,8 @@ dp.include_router(callbacks.router)
 
 
 async def on_startup():
-    from src.db import models as _models  # noqa: F401  — register models on Base
-    from src.db.base import Base, engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
+    # Schema is managed by alembic in the container entrypoint; this hook
+    # only handles Telegram-side setup.
     if settings.WEBHOOK_HOST:
         if not settings.WEBHOOK_SECRET:
             raise RuntimeError(
