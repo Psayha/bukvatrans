@@ -36,7 +36,7 @@ TOPUP_NAMES = {
 }
 
 
-@router.message(Command("subscribe"))
+@router.message(Command("subscribe", "subscription", "plans"))
 async def cmd_subscribe(message: Message) -> None:
     kb = subscribe_kb()
     # In non-prod envs, prepend a test-payment shortcut. In prod this is a

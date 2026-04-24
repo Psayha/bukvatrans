@@ -27,6 +27,7 @@ from src.bot.handlers import (  # noqa: E402  (must follow setup_logging)
     settings as settings_handler,
     start,
     test_payment,
+    user_settings,
 )
 from src.bot.middlewares.ban import BanMiddleware  # noqa: E402
 from src.bot.middlewares.consent import ConsentMiddleware  # noqa: E402
@@ -73,6 +74,7 @@ dp.include_router(referral.router)
 dp.include_router(promo.router)
 dp.include_router(admin.router)
 dp.include_router(settings_handler.router)
+dp.include_router(user_settings.router)
 dp.include_router(menu_router.router)
 dp.include_router(links.router)
 dp.include_router(media.router)

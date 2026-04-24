@@ -914,10 +914,14 @@ class TestCallbacksHandler:
         cb.answer.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_cb_summary_dispatch_to_worker(self):
-        from src.bot.handlers.callbacks import cb_summary
+    async def test_cb_summary_disabled_for_demo(self):
+        # Demo build keeps the button live but parks users with a
+        # "feature in development" message instead of dispatching the
+        # Celery task. The real wiring (summary_task.delay) comes back
+        # when OpenRouter is enabled for summarisation in the next milestone.
         from sqlalchemy.ext.asyncio import AsyncSession
-        import sys
+
+        from src.bot.handlers.callbacks import cb_summary
 
         cb = make_callback("summary:t1")
         user = make_user(user_id=123)
@@ -931,18 +935,15 @@ class TestCallbacksHandler:
             summary_text=None,
         )
 
-        mock_summary_module = MagicMock()
-
         with patch(
             "src.bot.handlers.callbacks.get_transcription",
             return_value=transcription,
         ):
-            with patch.dict(
-                sys.modules, {"src.worker.tasks.summary": mock_summary_module}
-            ):
-                await cb_summary(cb, user=user, session=session)
+            await cb_summary(cb, user=user, session=session)
 
-        mock_summary_module.summary_task.delay.assert_called_once()
+        cb.message.answer.assert_called_once()
+        text = cb.message.answer.call_args[0][0]
+        assert "разработке" in text.lower() or "отключ" in text.lower()
         cb.answer.assert_called_once()
 
     @pytest.mark.asyncio
