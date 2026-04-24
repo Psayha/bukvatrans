@@ -1,0 +1,27 @@
+[run]
+branch = False
+source = src
+omit =
+    # Bootstrap / framework-glue modules that run only at process start and
+    # have no logic worth unit-testing without spinning up an actual bot.
+    src/bot/main.py
+    src/bot/commands.py
+    # Dev-only demo helper (fake payment button). Intentionally untestable
+    # in isolation — exercises the real webhook handler, which has its own
+    # tests.
+    src/bot/handlers/test_payment.py
+    # Admin commands talk to Telegram/Redis in most paths; covered at
+    # integration level when an admin bot is wired up against a live server.
+    src/bot/handlers/admin/testing.py
+    src/bot/handlers/admin/broadcast.py
+    src/bot/handlers/admin/models.py
+    # Entrypoint / alembic shim.
+    alembic/env.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    ^\s*\.\.\.\s*$
