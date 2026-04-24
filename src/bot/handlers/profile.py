@@ -19,16 +19,14 @@ async def cmd_profile(message: Message, user: User, session: AsyncSession) -> No
 
     subscription = NO_SUBSCRIPTION
     if user.has_active_subscription():
+        from datetime import datetime
+
+        from src.services.billing import PLANS
         for sub in user.subscriptions:
-            from datetime import datetime
             if sub.status == "active" and sub.expires_at > datetime.utcnow():
-                plan_names = {
-                    "basic": "Базовый",
-                    "pro": "Про (Безлимит)",
-                }
+                plan_label = PLANS.get(sub.plan, {}).get("label", sub.plan)
                 subscription = (
-                    f"{plan_names.get(sub.plan, sub.plan)} до "
-                    f"{sub.expires_at.strftime('%d.%m.%Y')}"
+                    f"{plan_label} до {sub.expires_at.strftime('%d.%m.%Y')}"
                 )
                 break
 

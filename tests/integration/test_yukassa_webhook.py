@@ -18,7 +18,7 @@ WEBHOOK_PAYLOAD_SUCCESS = {
         "amount": {"value": "649.00", "currency": "RUB"},
         "metadata": {
             "user_id": "123456789",
-            "plan_key": "basic_monthly",
+            "plan_key": "unlimited_30d",
         },
         "paid": True,
     },

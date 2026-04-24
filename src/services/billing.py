@@ -8,18 +8,46 @@ if TYPE_CHECKING:
 RUB_TO_SECONDS = 73
 REFERRAL_BONUS_PERCENT = 0.20
 
+# Unlimited subscriptions only — three durations. Simpler pricing message
+# than the old Basic/Pro split and matches the competitor structure we're
+# benchmarking against. `seconds: -1` = no per-minute cap while active.
 PLANS = {
-    "basic_monthly": {"price_rub": 649.0, "seconds": 108_000, "period_days": 30},
-    "basic_yearly": {"price_rub": 3_890.0, "seconds": 1_296_000, "period_days": 365},
-    "pro_monthly": {"price_rub": 1_449.0, "seconds": -1, "period_days": 30},     # unlimited
-    "pro_yearly": {"price_rub": 8_690.0, "seconds": -1, "period_days": 365},     # unlimited
+    "unlimited_7d": {
+        "price_rub": 249.0,
+        "seconds": -1,
+        "period_days": 7,
+        "label": "Безлимит на 7 дней",
+    },
+    "unlimited_30d": {
+        "price_rub": 549.0,
+        "seconds": -1,
+        "period_days": 30,
+        "label": "Безлимит на 30 дней",
+        "recommended": True,
+    },
+    "unlimited_180d": {
+        "price_rub": 2_499.0,
+        "seconds": -1,
+        "period_days": 180,
+        "label": "Безлимит на 6 месяцев",
+    },
 }
 
+# Top-ups kept for flexibility (e.g. user once-in-a-month need) but hidden
+# from the main /subscription flow — exposed only via /admin_testpay and
+# /topup command for backwards compatibility. New UI points users at plans.
 TOPUP_OPTIONS = {
     "topup_99": {"price_rub": 99.0, "seconds": 7_200},
     "topup_299": {"price_rub": 299.0, "seconds": 25_200},
     "topup_499": {"price_rub": 499.0, "seconds": 43_200},
 }
+
+# Monthly free allotment for non-subscribers.
+FREE_USES_PER_MONTH = 3
+
+# Referral milestone: after this many paid referrals the user gets a free
+# 30-day unlimited subscription. Used by /referral progress UI.
+REFERRAL_FREE_MONTH_THRESHOLD = 5
 
 
 def calculate_charge(duration_seconds: int) -> int:

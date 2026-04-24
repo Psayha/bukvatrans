@@ -1,39 +1,49 @@
 """Tests for billing plans and topup options."""
-from src.services.billing import PLANS, TOPUP_OPTIONS
+from src.services.billing import (
+    FREE_USES_PER_MONTH,
+    PLANS,
+    REFERRAL_FREE_MONTH_THRESHOLD,
+    TOPUP_OPTIONS,
+)
 
 
 class TestPlansConfig:
     def test_all_plans_exist(self):
-        for key in ("basic_monthly", "basic_yearly", "pro_monthly", "pro_yearly"):
+        for key in ("unlimited_7d", "unlimited_30d", "unlimited_180d"):
             assert key in PLANS
 
-    def test_basic_monthly_price(self):
-        assert PLANS["basic_monthly"]["price_rub"] == 649.0
+    def test_all_plans_unlimited(self):
+        # Post-redesign, every plan is unlimited; only the period differs.
+        for key, plan in PLANS.items():
+            assert plan["seconds"] == -1, f"{key} should be unlimited"
 
-    def test_basic_yearly_price(self):
-        assert PLANS["basic_yearly"]["price_rub"] == 3890.0
+    def test_plan_has_label(self):
+        for plan in PLANS.values():
+            assert "label" in plan and plan["label"]
 
-    def test_pro_monthly_unlimited(self):
-        assert PLANS["pro_monthly"]["seconds"] == -1
+    def test_prices(self):
+        assert PLANS["unlimited_7d"]["price_rub"] == 249.0
+        assert PLANS["unlimited_30d"]["price_rub"] == 549.0
+        assert PLANS["unlimited_180d"]["price_rub"] == 2499.0
 
-    def test_pro_yearly_unlimited(self):
-        assert PLANS["pro_yearly"]["seconds"] == -1
+    def test_periods(self):
+        assert PLANS["unlimited_7d"]["period_days"] == 7
+        assert PLANS["unlimited_30d"]["period_days"] == 30
+        assert PLANS["unlimited_180d"]["period_days"] == 180
 
-    def test_basic_monthly_seconds(self):
-        """108000 seconds = 30 hours."""
-        assert PLANS["basic_monthly"]["seconds"] == 108_000
+    def test_exactly_one_recommended(self):
+        flagged = [k for k, p in PLANS.items() if p.get("recommended")]
+        assert flagged == ["unlimited_30d"]
 
-    def test_basic_monthly_period(self):
-        assert PLANS["basic_monthly"]["period_days"] == 30
+    def test_monthly_cheaper_per_day_than_weekly(self):
+        per_day_weekly = PLANS["unlimited_7d"]["price_rub"] / 7
+        per_day_monthly = PLANS["unlimited_30d"]["price_rub"] / 30
+        assert per_day_monthly < per_day_weekly
 
-    def test_basic_yearly_period(self):
-        assert PLANS["basic_yearly"]["period_days"] == 365
-
-    def test_yearly_cheaper_per_month(self):
-        """Yearly plan should be cheaper per month than monthly."""
-        monthly = PLANS["basic_monthly"]["price_rub"]
-        yearly_per_month = PLANS["basic_yearly"]["price_rub"] / 12
-        assert yearly_per_month < monthly
+    def test_half_year_cheaper_per_day_than_monthly(self):
+        per_day_monthly = PLANS["unlimited_30d"]["price_rub"] / 30
+        per_day_half = PLANS["unlimited_180d"]["price_rub"] / 180
+        assert per_day_half < per_day_monthly
 
 
 class TestTopupOptions:
@@ -63,3 +73,11 @@ class TestTopupOptions:
         rate_499 = TOPUP_OPTIONS["topup_499"]["seconds"] / TOPUP_OPTIONS["topup_499"]["price_rub"]
         assert rate_299 >= rate_99
         assert rate_499 >= rate_299
+
+
+class TestBusinessConstants:
+    def test_free_uses_per_month(self):
+        assert FREE_USES_PER_MONTH == 3
+
+    def test_referral_threshold_positive(self):
+        assert REFERRAL_FREE_MONTH_THRESHOLD >= 1

@@ -25,12 +25,9 @@ router = Router()
 # This just catches obvious typos before creating a payment.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-PLAN_NAMES = {
-    "basic_monthly": "Базовый — 1 месяц",
-    "basic_yearly": "Базовый — 1 год",
-    "pro_monthly": "Про — 1 месяц",
-    "pro_yearly": "Про — 1 год",
-}
+def _plan_label(plan_key: str) -> str:
+    return PLANS[plan_key].get("label", plan_key)
+
 
 TOPUP_NAMES = {
     "topup_99": "2 часа",
@@ -152,7 +149,7 @@ async def _create_and_send_payment(
 ) -> None:
     if plan_key:
         plan = PLANS[plan_key]
-        plan_name = PLAN_NAMES.get(plan_key, plan_key)
+        plan_name = _plan_label(plan_key)
         amount = plan["price_rub"]
         metadata = {"plan_key": plan_key, "user_id": str(user.id)}
     elif topup_key:

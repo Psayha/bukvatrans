@@ -30,17 +30,15 @@ router = Router()
 logger = get_logger(__name__)
 
 
-_PLAN_LABELS = {
-    "basic_monthly": "Базовый — 1 мес",
-    "basic_yearly": "Базовый — 1 год",
-    "pro_monthly": "Про — 1 мес",
-    "pro_yearly": "Про — 1 год",
-}
 _TOPUP_LABELS = {
     "topup_99": "2 часа",
     "topup_299": "7 часов",
     "topup_499": "12 часов",
 }
+
+
+def _plan_label(key: str) -> str:
+    return PLANS[key].get("label", key)
 
 
 def _is_enabled() -> bool:
@@ -62,7 +60,7 @@ def _testpay_kb() -> InlineKeyboardMarkup:
     for key, plan in PLANS.items():
         rows.append([
             InlineKeyboardButton(
-                text=f"🧪 {_PLAN_LABELS.get(key, key)} ({plan['price_rub']:.0f}₽)",
+                text=f"🧪 {_plan_label(key)} ({plan['price_rub']:.0f}₽)",
                 callback_data=f"testpay:plan:{key}",
             )
         ])
@@ -141,7 +139,7 @@ async def _simulate_and_report(
     if plan_key:
         price = PLANS[plan_key]["price_rub"]
         metadata = {"user_id": str(user.id), "plan_key": plan_key}
-        label = _PLAN_LABELS.get(plan_key, plan_key)
+        label = _plan_label(plan_key)
     else:
         price = TOPUP_OPTIONS[topup_key]["price_rub"]
         metadata = {"user_id": str(user.id), "topup_key": topup_key}
