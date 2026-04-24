@@ -84,6 +84,9 @@ dp.include_router(callbacks.router)
 async def on_startup():
     # Schema is managed by alembic in the container entrypoint; this hook
     # only handles Telegram-side setup.
+    from src.bot.commands import sync_bot_commands
+    await sync_bot_commands(bot)
+
     if settings.WEBHOOK_HOST:
         if not settings.WEBHOOK_SECRET:
             raise RuntimeError(

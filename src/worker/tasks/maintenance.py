@@ -122,6 +122,121 @@ async def _purge_old_transcription_text():
     logger.info("purged_transcription_text rows=%s cutoff=%s", result.rowcount, cutoff)
 
 
+@app.task(name="src.worker.tasks.maintenance.notify_expiring_subscriptions")
+def notify_expiring_subscriptions():
+    """DM each user whose sub expires in 3, 2 or 1 days.
+
+    We want the warning to fire roughly once per horizon per sub, so we
+    select the window [now + N days, now + (N+1) days) for each N in
+    (1, 2, 3). A flag `notified_<N>` is tracked in Redis so a daily
+    re-run doesn't spam if the Celery beat loses its schedule file.
+    """
+    return _run_async(_notify_expiring_subscriptions())
+
+
+async def _notify_expiring_subscriptions() -> None:
+    from datetime import timedelta
+
+    import redis.asyncio as aioredis
+    from sqlalchemy import select
+
+    from src.bot.texts.ru import SUB_EXPIRING_SOON
+    from src.config import settings
+    from src.db.base import async_session_factory
+    from src.db.models.subscription import Subscription
+    from src.services.notification import send_message
+
+    warn_windows = (1, 2, 3)  # days-left buckets
+    redis = aioredis.from_url(settings.redis_cache_url, decode_responses=True)
+    sent_total = 0
+
+    try:
+        async with async_session_factory() as session:
+            for days_left in warn_windows:
+                now = datetime.utcnow()
+                window_start = now + timedelta(days=days_left)
+                window_end = window_start + timedelta(days=1)
+
+                result = await session.execute(
+                    select(Subscription).where(
+                        Subscription.status == "active",
+                        Subscription.expires_at >= window_start,
+                        Subscription.expires_at < window_end,
+                    )
+                )
+                subs = list(result.scalars())
+
+                for sub in subs:
+                    redis_key = f"sub:notify:{sub.id}:{days_left}"
+                    if await redis.get(redis_key):
+                        continue
+                    try:
+                        await send_message(
+                            sub.user_id,
+                            SUB_EXPIRING_SOON.format(
+                                expires_at=sub.expires_at.strftime("%d.%m.%Y"),
+                                days_left=days_left,
+                            ),
+                            parse_mode="HTML",
+                        )
+                        sent_total += 1
+                    except Exception:
+                        logger.warning(
+                            "sub_notify_failed", user_id=sub.user_id, exc_info=True
+                        )
+                        continue
+                    # Remember for ~ a month so repeats are idempotent.
+                    await redis.set(redis_key, "1", ex=60 * 60 * 24 * 30)
+    finally:
+        await redis.close()
+
+    logger.info("sub_expiring_notifications sent=%s", sent_total)
+
+
+@app.task(name="src.worker.tasks.maintenance.reset_monthly_free_uses")
+def reset_monthly_free_uses():
+    """Top up free_uses_left to FREE_USES_PER_MONTH for users whose
+    free_uses_reset_at has rolled past. First run for a fresh account
+    sets the boundary without crediting."""
+    return _run_async(_reset_monthly_free_uses())
+
+
+async def _reset_monthly_free_uses() -> None:
+    from sqlalchemy import or_, update
+
+    from src.db.base import async_session_factory
+    from src.db.models.user import User
+    from src.services.billing import FREE_USES_PER_MONTH
+
+    now = datetime.utcnow()
+    # Start of next calendar month from now.
+    if now.month == 12:
+        next_reset = datetime(now.year + 1, 1, 1)
+    else:
+        next_reset = datetime(now.year, now.month + 1, 1)
+
+    async with async_session_factory() as session:
+        # Refill users whose reset boundary has passed OR who have never been
+        # processed yet. Cap at the monthly allotment — never clobber a
+        # higher count if e.g. a promo gave more.
+        result = await session.execute(
+            update(User)
+            .where(
+                or_(
+                    User.free_uses_reset_at.is_(None),
+                    User.free_uses_reset_at <= now,
+                ),
+                User.is_banned.is_(False),
+            )
+            .values(
+                free_uses_left=FREE_USES_PER_MONTH,
+                free_uses_reset_at=next_reset,
+            )
+        )
+        await session.commit()
+    logger.info("monthly_free_uses_reset rows=%s next=%s", result.rowcount, next_reset)
+
+
 @app.task(name="src.worker.tasks.maintenance.check_dead_letter_queue")
 def check_dead_letter_queue():
     return _run_async(_check_dlq())

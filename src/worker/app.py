@@ -65,6 +65,19 @@ app.conf.beat_schedule = {
         "task": "src.worker.tasks.maintenance.purge_old_transcription_text",
         "schedule": crontab(hour=3, minute=30),
     },
+    # Daily at 10:00 МСК (07:00 UTC) users get a heads-up 3/2/1 days before
+    # their subscription expires. Idempotent — keyed in Redis per sub+window.
+    "notify_expiring_subscriptions": {
+        "task": "src.worker.tasks.maintenance.notify_expiring_subscriptions",
+        "schedule": crontab(hour=7, minute=0),
+    },
+    # First of every month at 00:05 UTC: reset every user's monthly free
+    # quota to FREE_USES_PER_MONTH. Daily tick also handles stragglers
+    # (e.g. a user who signed up on the 15th keeps their boundary rolling).
+    "reset_monthly_free_uses": {
+        "task": "src.worker.tasks.maintenance.reset_monthly_free_uses",
+        "schedule": crontab(hour=0, minute=5),
+    },
     "check_dlq": {
         "task": "src.worker.tasks.maintenance.check_dead_letter_queue",
         "schedule": 300,
