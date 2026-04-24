@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, TYPE_CHECKING
 from sqlalchemy import BigInteger, String, Integer, Boolean, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -41,7 +41,9 @@ class User(Base):
     )
 
     def has_active_unlimited_subscription(self) -> bool:
-        now = datetime.utcnow()
+        # expires_at is TIMESTAMPTZ (tz-aware); naive datetime.utcnow() would
+        # raise TypeError on comparison.
+        now = datetime.now(timezone.utc)
         for sub in self.subscriptions:
             if (
                 sub.status == "active"
@@ -52,7 +54,7 @@ class User(Base):
         return False
 
     def has_active_subscription(self) -> bool:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for sub in self.subscriptions:
             if sub.status == "active" and sub.expires_at > now:
                 return True

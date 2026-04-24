@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -75,7 +75,7 @@ async def _apply_promo(user: User, code_str: str, session: AsyncSession) -> str 
             if not promo:
                 return None
 
-            if promo.expires_at and promo.expires_at < datetime.utcnow():
+            if promo.expires_at and promo.expires_at < datetime.now(timezone.utc):
                 return None
             if promo.max_uses and promo.used_count >= promo.max_uses:
                 return None

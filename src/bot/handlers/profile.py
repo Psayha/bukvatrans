@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -32,7 +32,7 @@ async def cmd_profile(message: Message, user: User, session: AsyncSession) -> No
     subscription = NO_SUBSCRIPTION
     if user.has_active_subscription():
         for sub in user.subscriptions:
-            if sub.status == "active" and sub.expires_at > datetime.utcnow():
+            if sub.status == "active" and sub.expires_at > datetime.now(timezone.utc):
                 plan_label = PLANS.get(sub.plan, {}).get("label", sub.plan)
                 subscription = f"{plan_label} до {sub.expires_at:%d.%m.%Y}"
                 break
