@@ -108,7 +108,7 @@ async def telegram_webhook(request: Request) -> dict:
         logger.warning("telegram_webhook_bad_secret")
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    from src.bot.main import dp, bot
+    from src.bot.dispatcher import dp, bot
     from aiogram.types import Update
 
     data = await request.json()
