@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from src.config import settings
 
@@ -14,8 +14,20 @@ GROQ_TRANSCRIPTION_URL = f"{settings.GROQ_API_BASE.rstrip('/')}/openai/v1/audio/
 GROQ_MODEL = "whisper-large-v3-turbo"
 
 
+def _should_retry(exc: BaseException) -> bool:
+    # Network-level hiccups (proxy blink, connection reset, DNS, read timeout)
+    # — transient by nature, worth retrying.
+    if isinstance(exc, httpx.TransportError):
+        return True
+    # HTTP-level: only retry 5xx (upstream transient). 4xx means our request
+    # is wrong (bad auth, bad file) and won't get better on retry.
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return False
+
+
 @retry(
-    retry=retry_if_exception_type(httpx.HTTPStatusError),
+    retry=retry_if_exception(_should_retry),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=8),
     reraise=True,
