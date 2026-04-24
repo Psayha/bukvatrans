@@ -62,21 +62,30 @@ def make_callback(data="", user_id=123):
 
 class TestStartHandler:
     @pytest.mark.asyncio
-    async def test_cmd_start_new_user(self):
+    async def test_cmd_start_new_user_sees_consent_prompt(self):
+        from sqlalchemy.ext.asyncio import AsyncSession
+
         from src.bot.handlers.start import cmd_start
         msg = make_message("/start")
         user = make_user(free_uses_left=3)
-        await cmd_start(msg, user=user, is_new_user=True)
+        user.consent_at = None
+        session = AsyncMock(spec=AsyncSession)
+        await cmd_start(msg, user=user, session=session)
         msg.answer.assert_called_once()
-        call_kwargs = msg.answer.call_args
-        assert "HTML" in str(call_kwargs)
+        # Consent prompt carries the "Согласен" CTA text.
+        text = msg.answer.call_args[0][0]
+        assert "согласи" in text.lower() or "персональных данных" in text
 
     @pytest.mark.asyncio
-    async def test_cmd_start_existing_user(self):
+    async def test_cmd_start_consented_user_welcomed(self):
+        from sqlalchemy.ext.asyncio import AsyncSession
+
         from src.bot.handlers.start import cmd_start
         msg = make_message("/start")
         user = make_user(balance_seconds=3600, free_uses_left=0)
-        await cmd_start(msg, user=user, is_new_user=False)
+        user.consent_at = datetime.utcnow()
+        session = AsyncMock(spec=AsyncSession)
+        await cmd_start(msg, user=user, session=session)
         msg.answer.assert_called_once()
 
     @pytest.mark.asyncio
@@ -109,7 +118,10 @@ class TestProfileHandler:
 
         msg = make_message("/profile")
         user = make_user()
+        user.ai_dialogs_count = 0
         session = AsyncMock(spec=AsyncSession)
+        # Scalar is called for total audio sum.
+        session.scalar = AsyncMock(return_value=0)
 
         with patch("src.bot.handlers.profile.get_user_transcriptions", return_value=[]):
             await cmd_profile(msg, user=user, session=session)
@@ -123,17 +135,19 @@ class TestProfileHandler:
 
         msg = make_message("/profile")
         user = make_user()
+        user.ai_dialogs_count = 3
 
         sub = Subscription(
             id=1,
             user_id=123,
-            plan="pro",
+            plan="unlimited_30d",
             status="active",
             seconds_limit=-1,
             expires_at=datetime.utcnow() + timedelta(days=30),
         )
         user.subscriptions = [sub]
         session = AsyncMock(spec=AsyncSession)
+        session.scalar = AsyncMock(return_value=1800)
 
         with patch("src.bot.handlers.profile.get_user_transcriptions", return_value=[]):
             await cmd_profile(msg, user=user, session=session)
@@ -539,7 +553,8 @@ class TestReferralHandler:
         msg = make_message("/referral")
         user = make_user()
         session = AsyncMock(spec=AsyncSession)
-        session.scalar = AsyncMock(side_effect=[5, 150.0])
+        # referrals_count, bonus_earned_rub, paid_count
+        session.scalar = AsyncMock(side_effect=[5, 150.0, 2])
 
         await cmd_referral(msg, user=user, session=session)
 
@@ -899,10 +914,14 @@ class TestCallbacksHandler:
         cb.answer.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_cb_summary_dispatch_to_worker(self):
-        from src.bot.handlers.callbacks import cb_summary
+    async def test_cb_summary_disabled_for_demo(self):
+        # Demo build keeps the button live but parks users with a
+        # "feature in development" message instead of dispatching the
+        # Celery task. The real wiring (summary_task.delay) comes back
+        # when OpenRouter is enabled for summarisation in the next milestone.
         from sqlalchemy.ext.asyncio import AsyncSession
-        import sys
+
+        from src.bot.handlers.callbacks import cb_summary
 
         cb = make_callback("summary:t1")
         user = make_user(user_id=123)
@@ -916,18 +935,15 @@ class TestCallbacksHandler:
             summary_text=None,
         )
 
-        mock_summary_module = MagicMock()
-
         with patch(
             "src.bot.handlers.callbacks.get_transcription",
             return_value=transcription,
         ):
-            with patch.dict(
-                sys.modules, {"src.worker.tasks.summary": mock_summary_module}
-            ):
-                await cb_summary(cb, user=user, session=session)
+            await cb_summary(cb, user=user, session=session)
 
-        mock_summary_module.summary_task.delay.assert_called_once()
+        cb.message.answer.assert_called_once()
+        text = cb.message.answer.call_args[0][0]
+        assert "разработке" in text.lower() or "отключ" in text.lower()
         cb.answer.assert_called_once()
 
     @pytest.mark.asyncio

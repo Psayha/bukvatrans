@@ -100,24 +100,29 @@ class TestFullBillingFlow:
         assert charge == 60  # 1 full minute
 
     @pytest.mark.asyncio
-    async def test_subscription_activation_adds_seconds(self, db_session):
+    async def test_unlimited_subscription_activates_without_balance(self, db_session):
+        # New pricing model is unlimited-only: subscriptions don't add seconds
+        # to balance, they just flag the account as unlimited-active.
         user = User(id=700001, balance_seconds=0, free_uses_left=0)
         db_session.add(user)
         await db_session.commit()
 
-        plan = PLANS["basic_monthly"]
-        await add_balance(user.id, plan["seconds"], db_session)
+        plan = PLANS["unlimited_30d"]
+        assert plan["seconds"] == -1
 
         sub = Subscription(
             user_id=user.id,
-            plan="basic",
+            plan="unlimited_30d",
             status="active",
             seconds_limit=plan["seconds"],
             started_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(days=30),
+            expires_at=datetime.utcnow() + timedelta(days=plan["period_days"]),
         )
         db_session.add(sub)
         await db_session.commit()
 
         updated = await get_user(user.id, db_session)
-        assert updated.balance_seconds == plan["seconds"]
+        # Balance stays zero on unlimited — has_active_unlimited_subscription()
+        # is the gate used by the billing check.
+        assert updated.balance_seconds == 0
+        assert updated.has_active_unlimited_subscription()

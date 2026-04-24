@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.test_payment import build_test_payment_button
 from src.bot.keyboards.inline import payment_link_kb, subscribe_kb, topup_kb
 from src.bot.states import PaymentFlow
 from src.bot.texts.ru import (
@@ -24,12 +25,9 @@ router = Router()
 # This just catches obvious typos before creating a payment.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-PLAN_NAMES = {
-    "basic_monthly": "Базовый — 1 месяц",
-    "basic_yearly": "Базовый — 1 год",
-    "pro_monthly": "Про — 1 месяц",
-    "pro_yearly": "Про — 1 год",
-}
+def _plan_label(plan_key: str) -> str:
+    return PLANS[plan_key].get("label", plan_key)
+
 
 TOPUP_NAMES = {
     "topup_99": "2 часа",
@@ -38,14 +36,24 @@ TOPUP_NAMES = {
 }
 
 
-@router.message(Command("subscribe"))
+@router.message(Command("subscribe", "subscription", "plans"))
 async def cmd_subscribe(message: Message) -> None:
-    await message.answer(SUBSCRIBE_TEXT, reply_markup=subscribe_kb(), parse_mode="HTML")
+    kb = subscribe_kb()
+    # In non-prod envs, prepend a test-payment shortcut. In prod this is a
+    # no-op (returns None) so the menu looks exactly like the live version.
+    test_btn = build_test_payment_button()
+    if test_btn is not None:
+        kb.inline_keyboard.insert(0, [test_btn])
+    await message.answer(SUBSCRIBE_TEXT, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(Command("topup"))
 async def cmd_topup(message: Message) -> None:
-    await message.answer("Выберите сумму пополнения:", reply_markup=topup_kb())
+    kb = topup_kb()
+    test_btn = build_test_payment_button()
+    if test_btn is not None:
+        kb.inline_keyboard.insert(0, [test_btn])
+    await message.answer("Выберите сумму пополнения:", reply_markup=kb)
 
 
 async def _start_or_request_email(
@@ -141,7 +149,7 @@ async def _create_and_send_payment(
 ) -> None:
     if plan_key:
         plan = PLANS[plan_key]
-        plan_name = PLAN_NAMES.get(plan_key, plan_key)
+        plan_name = _plan_label(plan_key)
         amount = plan["price_rub"]
         metadata = {"plan_key": plan_key, "user_id": str(user.id)}
     elif topup_key:

@@ -164,11 +164,11 @@ async def _handle_payment_succeeded(
                 plan = PLANS[plan_key]
                 seconds_added = plan["seconds"] if plan["seconds"] != -1 else 0
                 period_days = plan["period_days"]
-                plan_name = plan_key.replace("_", " ").title()
+                plan_name = plan.get("label", plan_key)
 
                 sub = Subscription(
                     user_id=user_id,
-                    plan=plan_key.split("_")[0],
+                    plan=plan_key,
                     status="active",
                     seconds_limit=plan["seconds"],
                     started_at=datetime.utcnow(),
@@ -273,7 +273,7 @@ async def activate_subscription(user_id: int, plan_key: str, session: AsyncSessi
             return
         sub = Subscription(
             user_id=user_id,
-            plan=plan_key.split("_")[0],
+            plan=plan_key,
             status="active",
             seconds_limit=plan["seconds"],
             started_at=datetime.utcnow(),

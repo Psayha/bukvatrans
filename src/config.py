@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     COMPANY_OGRN: str = "{COMPANY_OGRN}"
     COMPANY_ADDRESS: str = "{COMPANY_ADDRESS}"
     SUPPORT_EMAIL: str = "{SUPPORT_EMAIL}"
+    # Telegram handle (without @) of the live-support account.
+    SUPPORT_HANDLE: str = "bukvitsa_support"
     PRIVACY_POLICY_URL: str = ""
     TERMS_URL: str = ""
 

@@ -42,10 +42,11 @@ class TestYukassaIPEdgeCases:
 
 
 class TestWebhookHelpers:
-    def test_plan_key_extracts_plan_name(self):
-        """basic_monthly.split('_')[0] = 'basic'."""
-        assert "basic_monthly".split("_")[0] == "basic"
-        assert "pro_yearly".split("_")[0] == "pro"
+    def test_all_plan_keys_parse(self):
+        # Plan keys are now stored verbatim in Subscription.plan — no split.
+        from src.services.billing import PLANS
+        assert "unlimited_30d" in PLANS
+        assert PLANS["unlimited_30d"]["period_days"] == 30
 
     def test_metadata_user_id_parsing(self):
         metadata = {"user_id": "123456789", "plan_key": "basic_monthly"}

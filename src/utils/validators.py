@@ -30,6 +30,11 @@ SUPPORTED_DOMAINS = [
     "drive.google.com",
     "disk.yandex.ru",
     "yadi.sk",
+    # Short-form video — yt-dlp handles both out of the box.
+    "tiktok.com",
+    "vm.tiktok.com",
+    "instagram.com",
+    "www.instagram.com",
 ]
 
 

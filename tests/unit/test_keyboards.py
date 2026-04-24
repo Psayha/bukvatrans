@@ -45,10 +45,9 @@ class TestSubscribeKb:
     def test_has_all_plans(self):
         kb = subscribe_kb()
         all_cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row if btn.callback_data]
-        assert any("plan:basic_monthly" in c for c in all_cbs)
-        assert any("plan:basic_yearly" in c for c in all_cbs)
-        assert any("plan:pro_monthly" in c for c in all_cbs)
-        assert any("plan:pro_yearly" in c for c in all_cbs)
+        assert any("plan:unlimited_7d" in c for c in all_cbs)
+        assert any("plan:unlimited_30d" in c for c in all_cbs)
+        assert any("plan:unlimited_180d" in c for c in all_cbs)
 
 
 class TestTopupKb:

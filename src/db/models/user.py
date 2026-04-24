@@ -26,6 +26,10 @@ class User(Base):
     )
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    consent_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    free_uses_reset_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    ai_dialogs_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
