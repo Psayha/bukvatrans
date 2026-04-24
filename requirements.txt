@@ -28,8 +28,8 @@ yt-dlp==2024.11.18
 # Payments
 yookassa==3.5.0
 
-# Summarization
-anthropic==0.39.0
+# Summarization — handled via httpx against OpenRouter (OpenAI-compatible).
+# No SDK needed; keeps provider-switching to a single env var.
 
 # File formats
 python-docx==1.1.2
