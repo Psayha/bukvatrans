@@ -31,8 +31,12 @@ async def cmd_profile(message: Message, user: User, session: AsyncSession) -> No
 
     subscription = NO_SUBSCRIPTION
     if user.has_active_subscription():
+        now = datetime.now(timezone.utc)
         for sub in user.subscriptions:
-            if sub.status == "active" and sub.expires_at > datetime.now(timezone.utc):
+            expires = sub.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if sub.status == "active" and expires > now:
                 plan_label = PLANS.get(sub.plan, {}).get("label", sub.plan)
                 subscription = f"{plan_label} до {sub.expires_at:%d.%m.%Y}"
                 break

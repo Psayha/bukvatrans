@@ -41,14 +41,18 @@ class User(Base):
     )
 
     def has_active_unlimited_subscription(self) -> bool:
-        # expires_at is TIMESTAMPTZ (tz-aware); naive datetime.utcnow() would
-        # raise TypeError on comparison.
+        # Prod Postgres stores expires_at as TIMESTAMPTZ (tz-aware);
+        # the in-memory sqlite test DB strips tzinfo. Treat a naive
+        # value as UTC so the comparison works in both environments.
         now = datetime.now(timezone.utc)
         for sub in self.subscriptions:
+            expires = sub.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
             if (
                 sub.status == "active"
                 and sub.seconds_limit == -1
-                and sub.expires_at > now
+                and expires > now
             ):
                 return True
         return False
@@ -56,7 +60,10 @@ class User(Base):
     def has_active_subscription(self) -> bool:
         now = datetime.now(timezone.utc)
         for sub in self.subscriptions:
-            if sub.status == "active" and sub.expires_at > now:
+            expires = sub.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if sub.status == "active" and expires > now:
                 return True
         return False
 

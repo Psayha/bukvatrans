@@ -75,8 +75,12 @@ async def _apply_promo(user: User, code_str: str, session: AsyncSession) -> str 
             if not promo:
                 return None
 
-            if promo.expires_at and promo.expires_at < datetime.now(timezone.utc):
-                return None
+            if promo.expires_at:
+                expires = promo.expires_at
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                if expires < datetime.now(timezone.utc):
+                    return None
             if promo.max_uses and promo.used_count >= promo.max_uses:
                 return None
 
