@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install --no-cache-dir yt-dlp
+RUN pip install --no-cache-dir -U yt-dlp
 
 COPY . .
 RUN chmod +x /app/scripts/entrypoint.sh

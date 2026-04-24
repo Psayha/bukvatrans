@@ -23,7 +23,11 @@ pydantic-settings==2.6.1
 python-dotenv==1.0.1
 
 # Audio/Video
-yt-dlp==2024.11.18
+# Unpinned: YouTube changes format manifests frequently, so an old yt-dlp
+# breaks with "Requested format is not available". The Dockerfile forces
+# `pip install -U yt-dlp` after requirements.txt to grab the latest on
+# every rebuild.
+yt-dlp
 
 # Payments
 yookassa==3.5.0

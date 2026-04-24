@@ -7,7 +7,7 @@ Flow for a brand-new user:
 Flow for a returning user who already consented:
   /start → short "welcome back" + balance + sub status + reply keyboard.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
@@ -77,8 +77,12 @@ async def on_consent(
 async def _welcome_back(message: Message, user: User) -> None:
     subscription_line = NO_SUBSCRIPTION
     if user.has_active_subscription():
+        now = datetime.now(timezone.utc)
         for sub in user.subscriptions:
-            if sub.status == "active" and sub.expires_at > datetime.utcnow():
+            expires = sub.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if sub.status == "active" and expires > now:
                 plan_label = PLANS.get(sub.plan, {}).get("label", sub.plan)
                 subscription_line = f"{plan_label} до {sub.expires_at:%d.%m.%Y}"
                 break

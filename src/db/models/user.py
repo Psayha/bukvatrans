@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, TYPE_CHECKING
 from sqlalchemy import BigInteger, String, Integer, Boolean, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -41,20 +41,29 @@ class User(Base):
     )
 
     def has_active_unlimited_subscription(self) -> bool:
-        now = datetime.utcnow()
+        # Prod Postgres stores expires_at as TIMESTAMPTZ (tz-aware);
+        # the in-memory sqlite test DB strips tzinfo. Treat a naive
+        # value as UTC so the comparison works in both environments.
+        now = datetime.now(timezone.utc)
         for sub in self.subscriptions:
+            expires = sub.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
             if (
                 sub.status == "active"
                 and sub.seconds_limit == -1
-                and sub.expires_at > now
+                and expires > now
             ):
                 return True
         return False
 
     def has_active_subscription(self) -> bool:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for sub in self.subscriptions:
-            if sub.status == "active" and sub.expires_at > now:
+            expires = sub.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if sub.status == "active" and expires > now:
                 return True
         return False
 

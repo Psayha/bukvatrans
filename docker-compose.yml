@@ -12,7 +12,7 @@ services:
   # so app containers never race the schema.
   migrate:
     image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
-    pull_policy: always
+    pull_policy: missing
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     build: .
@@ -28,7 +28,7 @@ services:
 
   bot:
     image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
-    pull_policy: always
+    pull_policy: missing
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     build: .
@@ -55,7 +55,7 @@ services:
 
   worker:
     image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
-    pull_policy: always
+    pull_policy: missing
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     build: .
@@ -82,7 +82,7 @@ services:
 
   worker_summary:
     image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
-    pull_policy: always
+    pull_policy: missing
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     build: .
@@ -107,7 +107,7 @@ services:
 
   worker_maintenance:
     image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
-    pull_policy: always
+    pull_policy: missing
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     build: .
@@ -132,7 +132,7 @@ services:
 
   beat:
     image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
-    pull_policy: always
+    pull_policy: missing
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     build: .
@@ -156,7 +156,7 @@ services:
 
   api:
     image: ${BUKVATRANS_IMAGE:-ghcr.io/psayha/bukvatrans:latest}
-    pull_policy: always
+    pull_policy: missing
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     build: .
