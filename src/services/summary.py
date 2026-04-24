@@ -71,9 +71,18 @@ async def generate_summary(
     api_key: Optional[str] = None,
     model: Optional[str] = None,
 ) -> str:
-    """Generate a structured Russian summary via OpenRouter."""
+    """Generate a structured Russian summary via OpenRouter.
+
+    The active model is, in order:
+      1. caller-supplied `model` argument (tests),
+      2. runtime override from Redis (set by /admin_model),
+      3. settings.OPENROUTER_MODEL (default from .env).
+    """
     key = api_key or settings.OPENROUTER_API_KEY
-    model = model or settings.OPENROUTER_MODEL
+    if model is None:
+        # Lazy import to avoid a cycle if admin_model ever grew this direction.
+        from src.utils.admin_model import get_active_model
+        model = await get_active_model()
     if not key:
         raise RuntimeError("OPENROUTER_API_KEY is not configured")
 

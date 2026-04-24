@@ -19,5 +19,7 @@ class PromoFlow(StatesGroup):
 class AdminFlow(StatesGroup):
     main_menu = State()
     broadcast_message = State()
+    broadcast_confirm = State()
     user_lookup = State()
     add_balance = State()
+    selecting_model = State()

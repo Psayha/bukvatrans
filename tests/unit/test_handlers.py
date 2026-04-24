@@ -192,34 +192,34 @@ class TestProfileHandler:
 
 class TestAdminHandler:
     def test_is_admin_by_flag(self):
-        from src.bot.handlers.admin import is_admin
+        from src.bot.handlers.admin._common import is_admin
         user = make_user(is_admin=True)
         assert is_admin(user) is True
 
     def test_is_admin_in_list(self):
-        from src.bot.handlers.admin import is_admin
+        from src.bot.handlers.admin._common import is_admin
         user = make_user(user_id=999)
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = [999]
             assert is_admin(user) is True
 
     def test_is_not_admin(self):
-        from src.bot.handlers.admin import is_admin
+        from src.bot.handlers.admin._common import is_admin
         user = make_user(is_admin=False)
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             assert is_admin(user) is False
 
     @pytest.mark.asyncio
     async def test_cmd_admin_not_admin(self):
-        from src.bot.handlers.admin import cmd_admin
+        from src.bot.handlers.admin.menu import cmd_admin
         from aiogram.fsm.context import FSMContext
 
         msg = make_message("/admin")
         user = make_user(is_admin=False)
         state = AsyncMock(spec=FSMContext)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin(msg, user=user, state=state)
 
@@ -227,14 +227,14 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_is_admin(self):
-        from src.bot.handlers.admin import cmd_admin
+        from src.bot.handlers.admin.menu import cmd_admin
         from aiogram.fsm.context import FSMContext
 
         msg = make_message("/admin")
         user = make_user(is_admin=True)
         state = AsyncMock(spec=FSMContext)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin(msg, user=user, state=state)
 
@@ -242,14 +242,14 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_balance_not_admin(self):
-        from src.bot.handlers.admin import cmd_admin_balance
+        from src.bot.handlers.admin.users import cmd_admin_balance
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_balance 456 3600")
         user = make_user(is_admin=False)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin_balance(msg, user=user, session=session)
 
@@ -257,14 +257,14 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_balance_wrong_args(self):
-        from src.bot.handlers.admin import cmd_admin_balance
+        from src.bot.handlers.admin.users import cmd_admin_balance
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_balance")
         user = make_user(is_admin=True)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin_balance(msg, user=user, session=session)
 
@@ -273,14 +273,14 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_balance_invalid_args(self):
-        from src.bot.handlers.admin import cmd_admin_balance
+        from src.bot.handlers.admin.users import cmd_admin_balance
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_balance abc xyz")
         user = make_user(is_admin=True)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin_balance(msg, user=user, session=session)
 
@@ -288,23 +288,23 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_balance_user_not_found(self):
-        from src.bot.handlers.admin import cmd_admin_balance
+        from src.bot.handlers.admin.users import cmd_admin_balance
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_balance 456 3600")
         user = make_user(is_admin=True)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
-            with patch("src.bot.handlers.admin.get_user", return_value=None):
+            with patch("src.bot.handlers.admin.users.get_user", return_value=None):
                 await cmd_admin_balance(msg, user=user, session=session)
 
         assert "не найден" in msg.answer.call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_cmd_admin_balance_success(self):
-        from src.bot.handlers.admin import cmd_admin_balance
+        from src.bot.handlers.admin.users import cmd_admin_balance
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_balance 456 3600")
@@ -312,24 +312,24 @@ class TestAdminHandler:
         target = make_user(user_id=456)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
-            with patch("src.bot.handlers.admin.get_user", return_value=target):
-                with patch("src.bot.handlers.admin.add_balance", return_value=target):
+            with patch("src.bot.handlers.admin.users.get_user", return_value=target):
+                with patch("src.bot.handlers.admin.users.add_balance", return_value=target):
                     await cmd_admin_balance(msg, user=user, session=session)
 
         assert "Добавлено" in msg.answer.call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_cmd_admin_ban_not_admin(self):
-        from src.bot.handlers.admin import cmd_admin_ban
+        from src.bot.handlers.admin.users import cmd_admin_ban
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_ban 456")
         user = make_user(is_admin=False)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin_ban(msg, user=user, session=session)
 
@@ -337,7 +337,7 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_ban_success(self):
-        from src.bot.handlers.admin import cmd_admin_ban
+        from src.bot.handlers.admin.users import cmd_admin_ban
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_ban 456")
@@ -346,9 +346,9 @@ class TestAdminHandler:
         session = AsyncMock(spec=AsyncSession)
         session.commit = AsyncMock()
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
-            with patch("src.bot.handlers.admin.get_user", return_value=target):
+            with patch("src.bot.handlers.admin.users.get_user", return_value=target):
                 await cmd_admin_ban(msg, user=user, session=session)
 
         assert target.is_banned is True
@@ -356,14 +356,14 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_ban_wrong_args(self):
-        from src.bot.handlers.admin import cmd_admin_ban
+        from src.bot.handlers.admin.users import cmd_admin_ban
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_ban")
         user = make_user(is_admin=True)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin_ban(msg, user=user, session=session)
 
@@ -371,14 +371,14 @@ class TestAdminHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_admin_ban_invalid_id(self):
-        from src.bot.handlers.admin import cmd_admin_ban
+        from src.bot.handlers.admin.users import cmd_admin_ban
         from sqlalchemy.ext.asyncio import AsyncSession
 
         msg = make_message("/admin_ban notanumber")
         user = make_user(is_admin=True)
         session = AsyncMock(spec=AsyncSession)
 
-        with patch("src.bot.handlers.admin.settings") as mock_settings:
+        with patch("src.bot.handlers.admin._common.settings") as mock_settings:
             mock_settings.admin_ids_list = []
             await cmd_admin_ban(msg, user=user, session=session)
 
