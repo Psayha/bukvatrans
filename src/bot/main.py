@@ -24,6 +24,7 @@ from src.bot.handlers import (  # noqa: E402  (must follow setup_logging)
     referral,
     settings as settings_handler,
     start,
+    test_payment,
 )
 from src.bot.middlewares.ban import BanMiddleware  # noqa: E402
 from src.bot.middlewares.database import DatabaseMiddleware  # noqa: E402
@@ -61,6 +62,7 @@ dp.update.middleware(RateLimitMiddleware())
 dp.include_router(start.router)
 dp.include_router(profile.router)
 dp.include_router(payment.router)
+dp.include_router(test_payment.router)
 dp.include_router(referral.router)
 dp.include_router(promo.router)
 dp.include_router(admin.router)

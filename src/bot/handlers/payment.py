@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.test_payment import build_test_payment_button
 from src.bot.keyboards.inline import payment_link_kb, subscribe_kb, topup_kb
 from src.bot.states import PaymentFlow
 from src.bot.texts.ru import (
@@ -40,12 +41,22 @@ TOPUP_NAMES = {
 
 @router.message(Command("subscribe"))
 async def cmd_subscribe(message: Message) -> None:
-    await message.answer(SUBSCRIBE_TEXT, reply_markup=subscribe_kb(), parse_mode="HTML")
+    kb = subscribe_kb()
+    # In non-prod envs, prepend a test-payment shortcut. In prod this is a
+    # no-op (returns None) so the menu looks exactly like the live version.
+    test_btn = build_test_payment_button()
+    if test_btn is not None:
+        kb.inline_keyboard.insert(0, [test_btn])
+    await message.answer(SUBSCRIBE_TEXT, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(Command("topup"))
 async def cmd_topup(message: Message) -> None:
-    await message.answer("Выберите сумму пополнения:", reply_markup=topup_kb())
+    kb = topup_kb()
+    test_btn = build_test_payment_button()
+    if test_btn is not None:
+        kb.inline_keyboard.insert(0, [test_btn])
+    await message.answer("Выберите сумму пополнения:", reply_markup=kb)
 
 
 async def _start_or_request_email(
