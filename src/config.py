@@ -3,7 +3,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # `.env` is shared with docker-compose, which stores its own variables
+    # there (DOMAIN, DB_PASSWORD, BACKUP_RETENTION_DAYS, ...). Without
+    # extra="ignore" Pydantic v2 rejects them and Settings() fails at import.
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     # Bot
     BOT_TOKEN: str = ""
