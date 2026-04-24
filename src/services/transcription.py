@@ -19,10 +19,12 @@ def _should_retry(exc: BaseException) -> bool:
     # — transient by nature, worth retrying.
     if isinstance(exc, httpx.TransportError):
         return True
-    # HTTP-level: only retry 5xx (upstream transient). 4xx means our request
-    # is wrong (bad auth, bad file) and won't get better on retry.
+    # HTTP-level: retry 5xx (upstream transient) and 429 (rate limit — the
+    # server is explicitly asking us to back off and try again). Other 4xx
+    # (400/401/413) mean our request is wrong and won't fix itself.
     if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code >= 500
+        code = exc.response.status_code
+        return code == 429 or code >= 500
     return False
 
 
