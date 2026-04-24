@@ -196,10 +196,12 @@ services:
       - letsencrypt_www:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx
     # Substitute ${DOMAIN} into the template at container start.
-    command: >
-      /bin/sh -c "envsubst '$$DOMAIN' < /etc/nginx/templates/default.conf.template
-                  > /etc/nginx/nginx.conf
-                  && nginx -g 'daemon off;'"
+    # List-form so docker-compose passes the -c argument as one string
+    # (string-form YAML splits on whitespace and breaks the &&).
+    command:
+      - /bin/sh
+      - -c
+      - "envsubst '$$DOMAIN' < /etc/nginx/templates/default.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
     restart: unless-stopped
     logging: *default-logging
 
@@ -272,11 +274,17 @@ services:
   # On first deploy run `docker login ghcr.io -u <github_user> -p <PAT>`
   # so the file exists. The PAT only needs `read:packages`.
   watchtower:
-    image: containrrr/watchtower:1.7.1
+    # Floating `latest` instead of a pinned 1.7.1 — older tags shipped a
+    # Docker client that negotiates API 1.25, which modern daemons reject
+    # ("client version is too old"). `latest` uses a recent engine client.
+    image: containrrr/watchtower:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/.docker/config.json:/config.json:ro
     environment:
+      # Pin the API version the client uses when talking to the host docker.
+      # Host is Docker 24+, any 1.41+ negotiates cleanly.
+      DOCKER_API_VERSION: "1.43"
       WATCHTOWER_POLL_INTERVAL: "60"
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_INCLUDE_RESTARTING: "true"
