@@ -1,43 +1,54 @@
+from datetime import datetime
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.texts.ru import HISTORY_EMPTY, NO_SUBSCRIPTION, PROFILE_TEXT
+from src.db.models.transcription import Transcription
 from src.db.models.user import User
 from src.db.repositories.transcription import get_user_transcriptions
-from src.bot.texts.ru import (
-    PROFILE_TEXT, HISTORY_EMPTY, NO_SUBSCRIPTION
-)
+from src.services.billing import PLANS
 from src.utils.formatters import format_balance, format_duration
+from src.utils.gamification import format_level_line, saved_time_phrase
 
 router = Router()
 
 
 @router.message(Command("profile"))
 async def cmd_profile(message: Message, user: User, session: AsyncSession) -> None:
-    total = len(await get_user_transcriptions(user.id, session, limit=100))
+    recent = await get_user_transcriptions(user.id, session, limit=100)
+    total_transcriptions = len(recent)
+
+    total_audio_seconds = await session.scalar(
+        select(func.coalesce(func.sum(Transcription.duration_seconds), 0)).where(
+            Transcription.user_id == user.id,
+            Transcription.status == "done",
+        )
+    ) or 0
 
     subscription = NO_SUBSCRIPTION
     if user.has_active_subscription():
-        from datetime import datetime
-
-        from src.services.billing import PLANS
         for sub in user.subscriptions:
             if sub.status == "active" and sub.expires_at > datetime.utcnow():
                 plan_label = PLANS.get(sub.plan, {}).get("label", sub.plan)
-                subscription = (
-                    f"{plan_label} до {sub.expires_at.strftime('%d.%m.%Y')}"
-                )
+                subscription = f"{plan_label} до {sub.expires_at:%d.%m.%Y}"
                 break
 
     ref_link = f"https://t.me/{(await message.bot.get_me()).username}?start=ref_{user.id}"
 
     text = PROFILE_TEXT.format(
         user_id=user.id,
+        level_line=format_level_line(total_audio_seconds),
         balance=format_balance(user.balance_seconds),
         free_uses=user.free_uses_left,
-        total_transcriptions=total,
         subscription=subscription,
+        total_transcriptions=total_transcriptions,
+        total_audio=format_duration(total_audio_seconds),
+        ai_dialogs=user.ai_dialogs_count,
+        saved_time=saved_time_phrase(total_audio_seconds),
         ref_link=ref_link,
     )
     await message.answer(text, parse_mode="HTML")

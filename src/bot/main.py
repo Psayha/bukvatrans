@@ -14,10 +14,12 @@ setup_logging()
 log = get_logger(__name__)
 
 from src.bot.handlers import (  # noqa: E402  (must follow setup_logging)
+    about,
     admin,
     callbacks,
     links,
     media,
+    menu_router,
     payment,
     profile,
     promo,
@@ -27,6 +29,7 @@ from src.bot.handlers import (  # noqa: E402  (must follow setup_logging)
     test_payment,
 )
 from src.bot.middlewares.ban import BanMiddleware  # noqa: E402
+from src.bot.middlewares.consent import ConsentMiddleware  # noqa: E402
 from src.bot.middlewares.database import DatabaseMiddleware  # noqa: E402
 from src.bot.middlewares.rate_limit import RateLimitMiddleware  # noqa: E402
 from src.bot.middlewares.user import UserMiddleware  # noqa: E402
@@ -53,13 +56,16 @@ dp = Dispatcher(storage=storage)
 #  1. DatabaseMiddleware — opens a session all later steps reuse.
 #  2. UserMiddleware — loads/creates the User row.
 #  3. BanMiddleware — stops banned users before rate-limit counters tick up.
-#  4. RateLimitMiddleware — last so genuine rate-limit rejections are observable.
+#  4. ConsentMiddleware — gate on 152-ФЗ consent (runs after we know who).
+#  5. RateLimitMiddleware — last so genuine rate-limit rejections are observable.
 dp.update.middleware(DatabaseMiddleware())
 dp.update.middleware(UserMiddleware())
 dp.update.middleware(BanMiddleware())
+dp.update.middleware(ConsentMiddleware())
 dp.update.middleware(RateLimitMiddleware())
 
 dp.include_router(start.router)
+dp.include_router(about.router)
 dp.include_router(profile.router)
 dp.include_router(payment.router)
 dp.include_router(test_payment.router)
@@ -67,6 +73,7 @@ dp.include_router(referral.router)
 dp.include_router(promo.router)
 dp.include_router(admin.router)
 dp.include_router(settings_handler.router)
+dp.include_router(menu_router.router)
 dp.include_router(links.router)
 dp.include_router(media.router)
 dp.include_router(callbacks.router)
