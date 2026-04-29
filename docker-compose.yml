@@ -20,6 +20,19 @@ services:
     restart: "no"
     logging: *default-logging
 
+  # One-shot service: builds the React public web app and copies dist/ to the
+  # shared nginx volume. nginx serves it at littera.site.
+  web_panel:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend/web:/app:ro
+      - web_dist:/var/www/web
+    command: >
+      sh -c "npm ci && npm run build && cp -r dist/. /var/www/web/"
+    restart: "no"
+    logging: *default-logging
+
   # One-shot service that runs `alembic upgrade head` and exits. Every
   # long-running service `depends_on: migrate: service_completed_successfully`
   # so app containers never race the schema.
@@ -199,6 +212,7 @@ services:
     depends_on:
       - api
       - admin_panel
+      - web_panel
     ports:
       - "80:80"
       - "443:443"
@@ -210,6 +224,7 @@ services:
       - letsencrypt_www:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx
       - admin_dist:/var/www/admin:ro
+      - web_dist:/var/www/web:ro
     # Substitute ${DOMAIN} into the template at container start.
     # List-form so docker-compose passes the -c argument as one string
     # (string-form YAML splits on whitespace and breaks the &&).
@@ -317,3 +332,4 @@ volumes:
   letsencrypt_www:
   nginx_logs:
   admin_dist:
+  web_dist:
