@@ -138,49 +138,75 @@ export default function Transcriptions() {
             <div className={`flex items-center justify-between p-4 border-b ${modalIsError ? 'bg-red-50' : ''}`}>
               <div>
                 <h3 className="font-semibold text-sm">
-                  {modalIsError ? '🔴 Снапшот ошибки' : 'Транскрибация'} — {viewing.id.slice(0, 8)}…
+                  {modalIsError ? '🔴 Снапшот ошибки' : 'Транскрибация'} — <span className="font-mono">{viewing.id.slice(0, 8)}…</span>
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {viewing.user_display} · {viewing.source_type}
-                  {viewing.completed_at && ` · ${new Date(viewing.completed_at).toLocaleString('ru-RU')}`}
+                  Пользователь: <span className="font-medium text-gray-600">{viewing.user_display}</span>
+                  {' · '}ID пользователя: <span className="font-mono">{viewing.user_id}</span>
                 </p>
               </div>
-              <button onClick={() => setViewing(null)} className="text-gray-400 hover:text-gray-600 ml-4">✕</button>
+              <button onClick={() => setViewing(null)} className="text-gray-400 hover:text-gray-600 ml-4 text-lg leading-none">✕</button>
             </div>
 
             <div className="p-4 overflow-auto flex-1 space-y-4">
               {modalIsError ? (
                 <>
-                  {/* Source info */}
+                  {/* Meta grid */}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs bg-gray-50 rounded p-3">
+                    <div><span className="text-gray-400">Тип источника:</span> <span className="font-medium">{viewing.source_type}</span></div>
+                    <div><span className="text-gray-400">Язык:</span> <span className="font-medium">{viewing.language || '—'}</span></div>
+                    <div><span className="text-gray-400">Создано:</span> <span className="font-medium">{new Date(viewing.created_at).toLocaleString('ru-RU')}</span></div>
+                    <div><span className="text-gray-400">Упало:</span> <span className="font-medium">{viewing.completed_at ? new Date(viewing.completed_at).toLocaleString('ru-RU') : '—'}</span></div>
+                    <div><span className="text-gray-400">Списано секунд:</span> <span className="font-medium">{viewing.seconds_charged}</span></div>
+                    <div><span className="text-gray-400">Бесплатная:</span> <span className="font-medium">{viewing.is_free ? 'да' : 'нет'}</span></div>
+                    {viewing.duration_seconds != null && (
+                      <div><span className="text-gray-400">Длительность:</span> <span className="font-medium">{Math.round(viewing.duration_seconds / 60)} мин</span></div>
+                    )}
+                    {viewing.file_size_bytes != null && (
+                      <div><span className="text-gray-400">Размер файла:</span> <span className="font-medium">{(viewing.file_size_bytes / 1024 / 1024).toFixed(1)} МБ</span></div>
+                    )}
+                  </div>
+
+                  {/* Source */}
                   {(viewing.source_url || viewing.file_name) && (
                     <div>
                       <div className="text-xs font-medium text-gray-500 uppercase mb-1">Источник</div>
-                      <div className="text-sm text-gray-700 break-all">
-                        {viewing.source_url || viewing.file_name}
-                      </div>
+                      {viewing.source_url ? (
+                        <a href={viewing.source_url} target="_blank" rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline break-all">
+                          {viewing.source_url}
+                        </a>
+                      ) : (
+                        <div className="text-sm text-gray-700">{viewing.file_name}</div>
+                      )}
                     </div>
                   )}
 
-                  {/* Error type + message */}
+                  {/* Error */}
                   <div>
                     <div className="text-xs font-medium text-gray-500 uppercase mb-1">Ошибка</div>
-                    {viewing.error_type && (
-                      <span className="inline-block bg-red-100 text-red-700 text-xs font-mono px-2 py-0.5 rounded mb-1">
-                        {viewing.error_type}
-                      </span>
-                    )}
-                    <p className="text-sm text-red-700">{viewing.error_message || '—'}</p>
+                    <div className="bg-red-50 border border-red-200 rounded p-3 space-y-1">
+                      {viewing.error_type && (
+                        <div className="font-mono text-xs text-red-500 font-semibold">{viewing.error_type}</div>
+                      )}
+                      <div className="text-sm text-red-800">{viewing.error_message || '—'}</div>
+                    </div>
                   </div>
 
                   {/* Traceback */}
-                  {viewing.error_traceback && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-500 uppercase mb-1">Traceback</div>
-                      <pre className="text-xs bg-gray-900 text-gray-100 p-3 rounded overflow-auto max-h-72 whitespace-pre-wrap">
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 uppercase mb-1">Traceback</div>
+                    {viewing.error_traceback ? (
+                      <pre className="text-xs bg-gray-900 text-gray-100 p-3 rounded overflow-auto max-h-72 whitespace-pre-wrap leading-relaxed">
                         {viewing.error_traceback}
                       </pre>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="text-xs text-gray-400 italic bg-gray-50 rounded p-3">
+                        Traceback недоступен — ошибка произошла до обновления системы мониторинга.
+                        Для новых ошибок полный стек будет отображаться здесь.
+                      </div>
+                    )}
+                  </div>
                 </>
               ) : (
                 <pre className="text-sm whitespace-pre-wrap text-gray-700">
