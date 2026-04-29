@@ -7,24 +7,26 @@ from urllib.parse import urlparse
 from src.config import settings
 from src.utils.validators import is_safe_remote_url
 
-YDL_OPTS_BASE = {
-    "format": "bestaudio/best",
-    "postprocessors": [{
-        "key": "FFmpegExtractAudio",
-        "preferredcodec": "mp3",
-        "preferredquality": "128",
-    }],
-    "max_filesize": 2 * 1024 * 1024 * 1024,
-    "socket_timeout": 30,
-    "retries": 3,
-    "quiet": True,
-    "no_warnings": True,
-    "noplaylist": True,
-    # Disable subprocess-based external downloaders, force native engine so we
-    # don't spawn arbitrary shell helpers on user-controlled URLs.
-    "external_downloader": None,
-    "nocheckcertificate": False,
-}
+def _ydl_opts() -> dict:
+    opts: dict = {
+        "format": "bestaudio/best",
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "128",
+        }],
+        "max_filesize": 2 * 1024 * 1024 * 1024,
+        "socket_timeout": 30,
+        "retries": 3,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "external_downloader": None,
+        "nocheckcertificate": False,
+    }
+    if settings.YDL_PROXY:
+        opts["proxy"] = settings.YDL_PROXY
+    return opts
 
 # Dedicated pool so yt-dlp doesn't starve the default 32-thread executor.
 _YDL_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ytdl")
@@ -60,7 +62,7 @@ async def probe_url(url: str) -> dict:
             def warning(self, msg): pass
             def error(self, msg): errors.append(msg)
 
-        opts = {**YDL_OPTS_BASE, "skip_download": True, "logger": _ErrLogger()}
+        opts = {**_ydl_opts(), "skip_download": True, "logger": _ErrLogger()}
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -119,7 +121,7 @@ async def download_url(url: str, output_dir: Path) -> Path:
 
     out_template = str(output_dir / f"{uuid.uuid4()}.%(ext)s")
     opts = {
-        **YDL_OPTS_BASE,
+        **_ydl_opts(),
         "outtmpl": out_template,
         "max_filesize": settings.MAX_URL_FILESIZE_BYTES,
     }

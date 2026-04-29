@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # real host. Must NOT end with a slash.
     GROQ_API_BASE: str = "https://api.groq.com"
 
+    # HTTP/SOCKS5 proxy for yt-dlp downloads (bypasses geo-blocks on RU servers).
+    # Examples: http://user:pass@host:port  or  socks5://host:1080
+    # Leave empty to use direct connection.
+    YDL_PROXY: str = ""
+
     # Summarization via OpenRouter (OpenAI-compatible gateway that covers
     # Claude / GPT / Gemini / Llama behind one key). Override the model
     # without touching code; same client works for every provider.
