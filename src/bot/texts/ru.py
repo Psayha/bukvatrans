@@ -43,13 +43,11 @@ WELCOME_PART_2 = (
     "1️⃣ <b>Прямо сюда, в чат</b>\n"
     "Перешли голосовое, аудио или видео — обработаю сразу\n\n"
     "2️⃣ <b>Ссылка на видео</b>\n"
-    "YouTube, VK Видео, RuTube, TikTok, Instagram* — просто скинь ссылку\n\n"
+    "YouTube, VK Видео, RuTube, TikTok — просто скинь ссылку\n\n"
     "3️⃣ <b>Облачные диски</b>\n"
     "Google Диск или Яндекс Диск — пришли ссылку с открытым доступом\n\n"
     "━━━━━━━━━━━━━━━━\n\n"
     "🌍 Язык распознавания: <b>{audio_language}</b>\n\n"
-    "<i>*Принадлежит компании Meta, которая запрещена на территории РФ "
-    "и признана экстремистской организацией.</i>\n\n"
     "Жду твой первый файл 👇"
 )
 
@@ -80,7 +78,7 @@ MENU_PROMPT = (
 NEW_TRANSCRIPTION_PROMPT = (
     "🎙 Жду <b>аудио, видео, голосовое или ссылку</b>.\n\n"
     "Подойдёт: Telegram-сообщение, mp3/wav/m4a, mp4/mov, "
-    "YouTube/VK/RuTube/TikTok/Instagram, Google Диск, Яндекс Диск."
+    "YouTube/VK/RuTube/TikTok, Google Диск, Яндекс Диск."
 )
 
 
@@ -177,7 +175,7 @@ FILE_TOO_LARGE = "❌ Файл больше 2 ГБ. Отправь ссылку 
 
 URL_NOT_SUPPORTED = (
     "❌ Эта ссылка не подойдёт.\n\n"
-    "Работаю с: YouTube, VK Видео, RuTube, TikTok, Instagram, "
+    "Работаю с: YouTube, VK Видео, RuTube, TikTok, "
     "Google Диск, Яндекс Диск."
 )
 
