@@ -13,7 +13,7 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - ./frontend/admin:/app:ro
+      - ./frontend/admin:/app
       - admin_dist:/var/www/admin
     command: >
       sh -c "npm ci && npm run build && cp -r dist/. /var/www/admin/"
@@ -26,7 +26,7 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - ./frontend/web:/app:ro
+      - ./frontend/web:/app
       - web_dist:/var/www/web
     command: >
       sh -c "npm ci && npm run build && cp -r dist/. /var/www/web/"
