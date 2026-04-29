@@ -34,11 +34,14 @@ async def on_startup():
 async def main():
     await on_startup()
     if settings.WEBHOOK_HOST:
-        from src.api.main import app
-        import uvicorn
-        config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
-        server = uvicorn.Server(config)
-        await server.serve()
+        # Webhook delivery is handled by the `api` service — nginx routes
+        # /webhooks/telegram → api:8000 (see nginx/nginx.conf). The bot
+        # container used to run its own uvicorn here, but it was unreachable
+        # (the `bot` service has no `expose: 8000`) and just burnt ~190 MiB
+        # on a 1.9 GiB host. Now we register the webhook in on_startup()
+        # and block forever so the container stays up for the healthcheck.
+        log.info("bot_idle_in_webhook_mode")
+        await asyncio.Event().wait()
     else:
         await dp.start_polling(bot)
 
