@@ -7,23 +7,26 @@ from urllib.parse import urlparse
 from src.config import settings
 from src.utils.validators import is_safe_remote_url
 
+YDL_OPTS_BASE: dict = {
+    "format": "bestaudio/best",
+    "postprocessors": [{
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": "mp3",
+        "preferredquality": "128",
+    }],
+    "max_filesize": 2 * 1024 * 1024 * 1024,
+    "socket_timeout": 30,
+    "retries": 3,
+    "quiet": True,
+    "no_warnings": True,
+    "noplaylist": True,
+    "external_downloader": None,
+    "nocheckcertificate": False,
+}
+
+
 def _ydl_opts() -> dict:
-    opts: dict = {
-        "format": "bestaudio/best",
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "128",
-        }],
-        "max_filesize": 2 * 1024 * 1024 * 1024,
-        "socket_timeout": 30,
-        "retries": 3,
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "external_downloader": None,
-        "nocheckcertificate": False,
-    }
+    opts = dict(YDL_OPTS_BASE)
     if settings.YDL_PROXY:
         opts["proxy"] = settings.YDL_PROXY
     return opts
