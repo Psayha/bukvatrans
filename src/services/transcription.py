@@ -6,6 +6,9 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from src.config import settings
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Can be pointed at a Cloudflare Worker that proxies to api.groq.com when
 # the host is geo-blocked from the server (common in RU/CN). See
@@ -53,6 +56,22 @@ async def transcribe_chunk(
                     "response_format": "verbose_json",
                     "temperature": "0",
                 },
+            )
+        if response.status_code >= 400:
+            # Pre-empt raise_for_status() so we can log the upstream body.
+            # Without this we get a bare HTTPStatusError and have no idea
+            # whether 500 came from Deno (proxy quota / streaming hiccup)
+            # or Groq itself (corrupt audio / rate limit).
+            try:
+                size = audio_path.stat().st_size
+            except OSError:
+                size = -1
+            logger.error(
+                "groq_http_error",
+                status=response.status_code,
+                file=audio_path.name,
+                size_bytes=size,
+                body=response.text[:500],
             )
         response.raise_for_status()
         data = response.json()
