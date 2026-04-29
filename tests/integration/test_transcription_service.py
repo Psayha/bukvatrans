@@ -9,6 +9,7 @@ class TestTranscribeChunk:
         audio_file.write_bytes(b"fake audio data")
 
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = {"text": "Тестовый текст"}
 
@@ -44,6 +45,7 @@ class TestTranscribeChunk:
                     response=MagicMock(status_code=429),
                 )
             mock_resp = MagicMock()
+            mock_resp.status_code = 200
             mock_resp.raise_for_status = MagicMock()
             mock_resp.json.return_value = {"text": "Успешно"}
             return mock_resp
