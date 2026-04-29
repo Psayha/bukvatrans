@@ -1,9 +1,13 @@
 """Web transcription: file upload + URL + status polling."""
+import asyncio
 import math
+import tempfile
 import uuid
 from pathlib import Path
-from typing import Optional
 
+import aiofiles
+import boto3
+from botocore.client import Config
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -18,7 +22,7 @@ from src.db.repositories.transcription import (
     get_transcription,
 )
 from src.services.billing import check_can_transcribe
-from src.services.storage import get_presigned_url, upload_file
+from src.services.storage import get_presigned_url
 from src.utils.logging import get_logger
 
 router = APIRouter(prefix="/transcriptions", tags=["transcriptions"])
@@ -129,9 +133,6 @@ async def upload_transcription(
     if not can:
         raise HTTPException(status_code=402, detail=reason)
 
-    # Read into temp file with size guard.
-    import aiofiles, tempfile
-
     suffix = Path(file.filename or "upload").suffix or ".mp3"
     tmp = Path(tempfile.mktemp(suffix=suffix))
     try:
@@ -148,8 +149,6 @@ async def upload_transcription(
 
         # Upload to S3 under uploads/ prefix.
         s3_key = f"uploads/{uuid.uuid4()}{suffix}"
-        import asyncio, boto3
-        from botocore.client import Config
 
         def _upload():
             client = boto3.client(
@@ -184,7 +183,6 @@ async def upload_transcription(
         user.free_uses_left -= 1
         await session.commit()
 
-    # Dispatch to Celery.
     from src.worker.tasks.transcription import transcribe_task
 
     task = transcribe_task.apply_async(

@@ -1,9 +1,8 @@
 """Admin dashboard statistics."""
-import math
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import cast, Date, func, select
+from sqlalchemy import cast, Date, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_db, require_admin
@@ -34,7 +33,7 @@ async def get_stats(
     new_7d = await cnt(select(func.count(User.id)).where(User.created_at >= week_ago))
     new_30d = await cnt(select(func.count(User.id)).where(User.created_at >= month_ago))
     active_subs = await cnt(
-        select(func.count(func.distinct(Subscription.user_id))).where(
+        select(func.count(distinct(Subscription.user_id))).where(
             Subscription.status == "active",
             Subscription.expires_at > now,
         )

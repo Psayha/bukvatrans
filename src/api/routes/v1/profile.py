@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_current_user, get_db
 from src.db.models.user import User
-from src.services.billing import FREE_USES_PER_MONTH, PLANS, REFERRAL_FREE_MONTH_THRESHOLD
+from src.services.billing import FREE_USES_PER_MONTH, PLANS
 from src.utils.gamification import get_level_info
 
 router = APIRouter(prefix="/profile", tags=["profile"])

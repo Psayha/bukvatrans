@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.dependencies import get_current_user, get_db
 from src.db.models.promo_code import PromoCode, PromoCodeUse
 from src.db.models.user import User
-from src.services.billing import rub_to_seconds
 
 router = APIRouter(prefix="/promo", tags=["promo"])
 

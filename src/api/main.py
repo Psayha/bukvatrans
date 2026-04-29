@@ -1,12 +1,23 @@
 import time
 
+import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
+from src.api.routes.admin import broadcast as admin_broadcast
+from src.api.routes.admin import promo as admin_promo
+from src.api.routes.admin import stats as admin_stats
+from src.api.routes.admin import transcriptions as admin_transcriptions
+from src.api.routes.admin import transactions as admin_transactions
+from src.api.routes.admin import users as admin_users
+from src.api.routes.v1 import auth as v1_auth
+from src.api.routes.v1 import payments as v1_payments
+from src.api.routes.v1 import profile as v1_profile
+from src.api.routes.v1 import promo as v1_promo
+from src.api.routes.v1 import transcriptions as v1_transcriptions
 from src.api.webhooks import handle_yukassa_webhook
 from src.config import settings
 from src.utils import metrics
@@ -60,21 +71,6 @@ async def _prometheus_middleware(request: Request, call_next):
     return response
 
 
-# ── API routers ────────────────────────────────────────────────────────────
-
-from src.api.routes.v1 import auth as v1_auth
-from src.api.routes.v1 import profile as v1_profile
-from src.api.routes.v1 import transcriptions as v1_transcriptions
-from src.api.routes.v1 import payments as v1_payments
-from src.api.routes.v1 import promo as v1_promo
-
-from src.api.routes.admin import stats as admin_stats
-from src.api.routes.admin import users as admin_users
-from src.api.routes.admin import transcriptions as admin_transcriptions
-from src.api.routes.admin import transactions as admin_transactions
-from src.api.routes.admin import promo as admin_promo
-from src.api.routes.admin import broadcast as admin_broadcast
-
 _V1 = "/api/v1"
 _ADMIN = "/api/admin"
 
@@ -92,9 +88,6 @@ app.include_router(admin_promo.router, prefix=_ADMIN)
 app.include_router(admin_broadcast.router, prefix=_ADMIN)
 
 
-# ── Existing endpoints ─────────────────────────────────────────────────────
-
-
 @app.get("/metrics")
 async def prometheus_metrics() -> Response:
     body, content_type = metrics.render_latest()
@@ -108,6 +101,7 @@ async def health() -> JSONResponse:
 
     try:
         from sqlalchemy import text
+
         from src.db.base import async_session_factory
         async with async_session_factory() as session:
             await session.execute(text("SELECT 1"))
@@ -138,19 +132,21 @@ async def yukassa_webhook(request: Request) -> JSONResponse:
 
 @app.post("/webhooks/telegram")
 async def telegram_webhook(request: Request) -> dict:
+    import hmac
+
     expected = settings.WEBHOOK_SECRET
     if not expected:
         logger.error("telegram_webhook_missing_secret")
         raise HTTPException(status_code=503, detail="Webhook secret not configured")
 
     provided = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    import hmac
     if not hmac.compare_digest(provided, expected):
         logger.warning("telegram_webhook_bad_secret")
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    from src.bot.dispatcher import dp, bot
     from aiogram.types import Update
+
+    from src.bot.dispatcher import bot, dp
 
     data = await request.json()
     update = Update.model_validate(data)

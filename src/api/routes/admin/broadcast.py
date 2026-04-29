@@ -1,6 +1,6 @@
 """Admin broadcast — send messages to user segments."""
 import asyncio
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
