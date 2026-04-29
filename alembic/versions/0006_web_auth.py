@@ -20,37 +20,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add email column (was in ORM model but missing from DB).
-    op.add_column(
-        "users",
-        sa.Column("email", sa.String(255), nullable=True),
-    )
-    # Partial unique index: enforces uniqueness only where email IS NOT NULL,
-    # so multiple Telegram-only users (email=NULL) don't conflict.
+    # Use IF NOT EXISTS for all DDL so the migration is safe to re-run against
+    # a DB where some columns were already added by an earlier partial run.
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)")
     op.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email "
         "ON users(email) WHERE email IS NOT NULL"
     )
-
-    # Password hash for email/password auth.
-    op.add_column(
-        "users",
-        sa.Column("password_hash", sa.String(255), nullable=True),
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)")
+    op.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+        "email_verified BOOLEAN NOT NULL DEFAULT false"
     )
-
-    # Email verification flag.
-    op.add_column(
-        "users",
-        sa.Column(
-            "email_verified",
-            sa.Boolean(),
-            nullable=False,
-            server_default="false",
-        ),
-    )
-
-    # Sequence for web-only user IDs. Telegram IDs are positive ints capped
-    # around 8×10^9; starting at 10^13 leaves a safe gap.
     op.execute(
         "CREATE SEQUENCE IF NOT EXISTS web_user_id_seq "
         "START WITH 10000000000000 INCREMENT BY 1"
