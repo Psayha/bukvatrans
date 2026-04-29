@@ -1,8 +1,11 @@
+import math
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, AsyncMock
 
 from src.services.audio_processor import (
+    CHUNK_DURATION_SECONDS,
     split_audio,
     merge_transcriptions,
     needs_chunking,
@@ -13,35 +16,50 @@ from src.services.audio_processor import (
 class TestSplitAudio:
     @pytest.mark.asyncio
     async def test_short_audio_one_chunk(self, tmp_path):
-        """Audio < 10 min → 1 chunk."""
-        with patch("src.services.audio_processor.get_audio_duration", return_value=300.0):
+        """Audio shorter than one chunk → 1 chunk."""
+        with patch(
+            "src.services.audio_processor.get_audio_duration",
+            return_value=CHUNK_DURATION_SECONDS / 2,
+        ):
             with patch("asyncio.create_subprocess_exec") as mock_proc:
                 mock_proc.return_value = AsyncMock(wait=AsyncMock(return_value=0))
                 chunks = await split_audio(Path("/fake/audio.mp3"), tmp_path)
                 assert len(chunks) == 1
 
     @pytest.mark.asyncio
-    async def test_25_min_audio_splits_into_3(self, tmp_path):
-        """Audio 25 min (1500s) → ceil(1500/600) = 3 chunks."""
-        with patch("src.services.audio_processor.get_audio_duration", return_value=1500.0):
+    async def test_long_audio_splits_into_n_chunks(self, tmp_path):
+        """Audio of 5 chunk-durations → 5 chunks. Independent of the
+        actual CHUNK_DURATION_SECONDS so this doesn't break when we
+        retune chunk size."""
+        duration = CHUNK_DURATION_SECONDS * 5
+        with patch(
+            "src.services.audio_processor.get_audio_duration",
+            return_value=float(duration),
+        ):
             with patch("asyncio.create_subprocess_exec") as mock_proc:
                 mock_proc.return_value = AsyncMock(wait=AsyncMock(return_value=0))
                 chunks = await split_audio(Path("/fake/audio.mp3"), tmp_path)
-                assert len(chunks) == 3
+                assert len(chunks) == math.ceil(duration / CHUNK_DURATION_SECONDS)
 
     @pytest.mark.asyncio
-    async def test_exactly_10_min_one_chunk(self, tmp_path):
-        """Exactly 600s → 1 chunk."""
-        with patch("src.services.audio_processor.get_audio_duration", return_value=600.0):
+    async def test_exact_chunk_duration_one_chunk(self, tmp_path):
+        """Duration == CHUNK_DURATION_SECONDS → 1 chunk (loop exits at start==duration)."""
+        with patch(
+            "src.services.audio_processor.get_audio_duration",
+            return_value=float(CHUNK_DURATION_SECONDS),
+        ):
             with patch("asyncio.create_subprocess_exec") as mock_proc:
                 mock_proc.return_value = AsyncMock(wait=AsyncMock(return_value=0))
                 chunks = await split_audio(Path("/fake/audio.mp3"), tmp_path)
                 assert len(chunks) == 1
 
     @pytest.mark.asyncio
-    async def test_10_min_plus_1s_two_chunks(self, tmp_path):
-        """601s → 2 chunks."""
-        with patch("src.services.audio_processor.get_audio_duration", return_value=601.0):
+    async def test_one_second_over_chunk_two_chunks(self, tmp_path):
+        """CHUNK_DURATION_SECONDS + 1s → 2 chunks."""
+        with patch(
+            "src.services.audio_processor.get_audio_duration",
+            return_value=float(CHUNK_DURATION_SECONDS + 1),
+        ):
             with patch("asyncio.create_subprocess_exec") as mock_proc:
                 mock_proc.return_value = AsyncMock(wait=AsyncMock(return_value=0))
                 chunks = await split_audio(Path("/fake/audio.mp3"), tmp_path)
@@ -50,7 +68,10 @@ class TestSplitAudio:
     @pytest.mark.asyncio
     async def test_chunk_names_are_sequential(self, tmp_path):
         """Chunk files are named chunk_0000.mp3, chunk_0001.mp3, etc."""
-        with patch("src.services.audio_processor.get_audio_duration", return_value=1200.0):
+        with patch(
+            "src.services.audio_processor.get_audio_duration",
+            return_value=float(CHUNK_DURATION_SECONDS * 2),
+        ):
             with patch("asyncio.create_subprocess_exec") as mock_proc:
                 mock_proc.return_value = AsyncMock(wait=AsyncMock(return_value=0))
                 chunks = await split_audio(Path("/fake/audio.mp3"), tmp_path)

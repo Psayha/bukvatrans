@@ -33,8 +33,10 @@ SUPPORTED_DOMAINS = [
     # Short-form video — yt-dlp handles both out of the box.
     "tiktok.com",
     "vm.tiktok.com",
-    "instagram.com",
-    "www.instagram.com",
+    # Instagram intentionally omitted: requires authenticated session for
+    # reliable extraction and the typical RU egress is null-routed to IG.
+    # See `feat: re-enable Instagram` if you bring it back — needs cookies
+    # + a working SOCKS5 proxy (e.g. WARP) wired through YDL_PROXY.
 ]
 
 

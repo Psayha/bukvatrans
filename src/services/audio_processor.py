@@ -1,7 +1,13 @@
 import asyncio
 from pathlib import Path
 
-CHUNK_DURATION_SECONDS = 600   # 10 minutes
+# 5 minutes per chunk: at the 64 kbps mp3 we encode to, that's ~2.4 MB —
+# well under both Groq's 25 MB hard cap and the (looser, undocumented) body
+# limits of the Deno Deploy / Cloudflare Worker proxy in front of Groq.
+# Reverting to 10 min triggered consistent 500s from the proxy on long
+# RuTube audio. If you bump this, also test the proxy can pass the upload
+# within its per-invocation wall-clock.
+CHUNK_DURATION_SECONDS = 300   # 5 minutes
 OVERLAP_SECONDS = 5            # overlap for context at boundaries
 GROQ_MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
 
