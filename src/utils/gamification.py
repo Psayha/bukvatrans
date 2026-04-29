@@ -84,6 +84,19 @@ def saved_time_phrase(total_seconds: int) -> str:
     return f"{_format_seconds_short(saved)} {phrase}"
 
 
+def get_level_info(user) -> dict:
+    """Return a JSON-serialisable gamification block for the API profile response."""
+    info = level_for(user.balance_seconds)
+    return {
+        "level_name": info.name,
+        "level_emoji": info.emoji,
+        "progress_ratio": info.progress_ratio,
+        "current_threshold": info.current,
+        "next_threshold": info.next_threshold if info.next_threshold >= 0 else None,
+        "saved_time": saved_time_phrase(user.balance_seconds),
+    }
+
+
 def _format_seconds_short(seconds: int) -> str:
     if seconds < 60:
         return f"{seconds} сек"

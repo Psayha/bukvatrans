@@ -428,3 +428,171 @@ class TestV1Transcriptions:
             json={"url": "http://192.168.1.1/evil.mp3"},
         )
         assert resp.status_code == 422
+
+
+# ── admin transactions ─────────────────────────────────────────────────────
+
+
+class TestAdminTransactions:
+    @pytest.mark.asyncio
+    async def test_list_empty(self, admin_client):
+        resp = await admin_client.get("/api/admin/transactions")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert data["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_list_with_type_filter(self, admin_client):
+        resp = await admin_client.get("/api/admin/transactions?type=subscription")
+        assert resp.status_code == 200
+        assert "items" in resp.json()
+
+    @pytest.mark.asyncio
+    async def test_list_with_status_filter(self, admin_client):
+        resp = await admin_client.get("/api/admin/transactions?status=success")
+        assert resp.status_code == 200
+        assert "items" in resp.json()
+
+    @pytest.mark.asyncio
+    async def test_list_with_user_filter(self, admin_client, test_user):
+        resp = await admin_client.get(f"/api/admin/transactions?user_id={test_user.id}")
+        assert resp.status_code == 200
+        assert "items" in resp.json()
+
+
+# ── admin transcriptions ───────────────────────────────────────────────────
+
+
+class TestAdminTranscriptions:
+    @pytest.mark.asyncio
+    async def test_list_empty(self, admin_client):
+        resp = await admin_client.get("/api/admin/transcriptions")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert data["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_list_with_status_filter(self, admin_client):
+        resp = await admin_client.get("/api/admin/transcriptions?status=done")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_list_with_source_type_filter(self, admin_client):
+        resp = await admin_client.get("/api/admin/transcriptions?source_type=youtube")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_get_not_found(self, admin_client):
+        resp = await admin_client.get("/api/admin/transcriptions/nonexistent-id")
+        assert resp.status_code == 404
+
+
+# ── v1 profile ─────────────────────────────────────────────────────────────
+
+
+class TestV1Profile:
+    @pytest.mark.asyncio
+    async def test_get_profile(self, authed_client, test_user):
+        resp = await authed_client.get("/api/v1/profile")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == test_user.id
+        assert "balance_seconds" in data
+        assert "gamification" in data
+        assert "active_subscription" in data
+
+    @pytest.mark.asyncio
+    async def test_profile_gamification_fields(self, authed_client):
+        resp = await authed_client.get("/api/v1/profile")
+        assert resp.status_code == 200
+        gam = resp.json()["gamification"]
+        assert "level_name" in gam
+        assert "progress_ratio" in gam
+
+
+# ── v1 promo code apply ────────────────────────────────────────────────────
+
+
+class TestV1Promo:
+    @pytest.mark.asyncio
+    async def test_apply_invalid_code(self, authed_client):
+        resp = await authed_client.post(
+            "/api/v1/promo",
+            json={"code": "DOESNOTEXIST"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_apply_valid_code(self, authed_client, db_session, test_user):
+        from src.db.models.promo_code import PromoCode
+
+        pc = PromoCode(
+            code="VALIDCODE",
+            type="free_seconds",
+            value=3600,
+            is_active=True,
+        )
+        db_session.add(pc)
+        await db_session.commit()
+
+        resp = await authed_client.post(
+            "/api/v1/promo",
+            json={"code": "VALIDCODE"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["seconds_added"] == 3600
+
+    @pytest.mark.asyncio
+    async def test_apply_same_code_twice_rejected(self, authed_client, db_session, test_user):
+        from src.db.models.promo_code import PromoCode
+
+        pc = PromoCode(
+            code="ONCECODE",
+            type="free_seconds",
+            value=1800,
+            is_active=True,
+        )
+        db_session.add(pc)
+        await db_session.commit()
+
+        await authed_client.post("/api/v1/promo", json={"code": "ONCECODE"})
+        resp = await authed_client.post("/api/v1/promo", json={"code": "ONCECODE"})
+        assert resp.status_code == 400
+
+
+# ── admin broadcast ────────────────────────────────────────────────────────
+
+
+class TestAdminBroadcast:
+    @pytest.mark.asyncio
+    async def test_send_queues_background_task(self, admin_client):
+        """POST /broadcast should accept and queue without hitting the DB."""
+        resp = await admin_client.post(
+            "/api/admin/broadcast",
+            json={"text": "Hello everyone!", "target": "all"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_send_empty_text_rejected(self, admin_client):
+        resp = await admin_client.post(
+            "/api/admin/broadcast",
+            json={"text": "   ", "target": "all"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_send_without_auth_rejected(self):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                "/api/admin/broadcast",
+                json={"text": "Hi", "target": "all"},
+            )
+        assert resp.status_code in (401, 403, 422)
