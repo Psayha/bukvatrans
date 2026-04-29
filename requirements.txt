@@ -51,3 +51,6 @@ tenacity==9.0.0
 # Web auth
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# passlib 1.7.4 calls hashpw with a >72-byte test password during backend
+# init (wrap-bug detection); bcrypt>=4.0 rejects that with ValueError.
+bcrypt<4.0.0
