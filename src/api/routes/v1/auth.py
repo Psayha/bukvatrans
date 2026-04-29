@@ -52,7 +52,7 @@ class TelegramAuthBody(BaseModel):
 
 @router.post("/telegram")
 async def telegram_auth(body: TelegramAuthBody, session: AsyncSession = Depends(get_db)):
-    data = body.model_dump()
+    data = body.model_dump(exclude_none=True)
     if not verify_telegram_widget(data):
         raise HTTPException(status_code=401, detail="Invalid Telegram auth data")
 
