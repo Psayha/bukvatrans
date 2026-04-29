@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-logging: &default-logging
   driver: json-file
   options:
@@ -9,15 +7,23 @@ x-logging: &default-logging
 services:
   # One-shot service: builds the React admin panel and copies dist/ to the
   # shared nginx volume. nginx serves it statically at sb.littera.site.
+  # Skip when /var/www/admin already has a build — on a 2 GiB VPS a stray
+  # `docker compose up` re-running `npm ci` is enough to OOM-kill api.
+  # Force a rebuild with `docker compose run --rm admin_panel sh -c 'rm -rf /var/www/admin/*'`
+  # and a regular up.
   admin_panel:
     image: node:20-alpine
     working_dir: /app
     volumes:
       - ./frontend/admin:/app
       - admin_dist:/var/www/admin
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=512"
     command: >
-      sh -c "npm ci && npm run build && cp -r dist/. /var/www/admin/"
+      sh -c "[ -f /var/www/admin/index.html ] && echo 'admin build present, skipping' && exit 0;
+             npm ci && npm run build && cp -r dist/. /var/www/admin/"
     restart: "no"
+    mem_limit: 768m
     logging: *default-logging
 
   # One-shot service: builds the React public web app and copies dist/ to the
@@ -28,9 +34,13 @@ services:
     volumes:
       - ./frontend/web:/app
       - web_dist:/var/www/web
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=512"
     command: >
-      sh -c "npm ci && npm run build && cp -r dist/. /var/www/web/"
+      sh -c "[ -f /var/www/web/index.html ] && echo 'web build present, skipping' && exit 0;
+             npm ci && npm run build && cp -r dist/. /var/www/web/"
     restart: "no"
+    mem_limit: 768m
     logging: *default-logging
 
   # One-shot service that runs `alembic upgrade head` and exits. Every
@@ -50,6 +60,7 @@ services:
       db:
         condition: service_healthy
     restart: "no"
+    mem_limit: 256m
     logging: *default-logging
 
   bot:
@@ -77,6 +88,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    mem_limit: 192m
     logging: *default-logging
 
   worker:
@@ -87,7 +99,11 @@ services:
     build: .
     environment:
       ROLE: worker
-    command: celery -A src.worker.app worker -Q transcription -n transcription@%h --loglevel=info --concurrency=8
+    # Concurrency 2 (was 8): each child interpreter eats ~120-200 MiB during
+    # a transcription. On 1.9 GiB RAM, 8 simultaneous jobs OOM the box and
+    # take api/uvicorn with them. Tune up only after adding swap or moving
+    # to a bigger VPS.
+    command: celery -A src.worker.app worker -Q transcription -n transcription@%h --loglevel=info --concurrency=2
     env_file: .env
     depends_on:
       migrate:
@@ -104,6 +120,10 @@ services:
       timeout: 15s
       retries: 3
       start_period: 30s
+    # 640m caps a runaway transcription before it takes the host with it.
+    # The cgroup OOM kills the offending child only, parent reaps and acks
+    # late=False ensures the message is requeued for retry.
+    mem_limit: 640m
     logging: *default-logging
 
   worker_summary:
@@ -114,7 +134,7 @@ services:
     build: .
     environment:
       ROLE: worker_summary
-    command: celery -A src.worker.app worker -Q summary -n summary@%h --loglevel=info --concurrency=4
+    command: celery -A src.worker.app worker -Q summary -n summary@%h --loglevel=info --concurrency=1
     env_file: .env
     depends_on:
       migrate:
@@ -129,6 +149,7 @@ services:
       timeout: 15s
       retries: 3
       start_period: 30s
+    mem_limit: 320m
     logging: *default-logging
 
   worker_maintenance:
@@ -154,6 +175,7 @@ services:
       timeout: 15s
       retries: 3
       start_period: 30s
+    mem_limit: 160m
     logging: *default-logging
 
   beat:
@@ -178,6 +200,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    mem_limit: 128m
     logging: *default-logging
 
   api:
@@ -205,6 +228,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    mem_limit: 320m
     logging: *default-logging
 
   nginx:
@@ -233,6 +257,7 @@ services:
       - -c
       - "envsubst '$$DOMAIN' < /etc/nginx/templates/default.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
     restart: unless-stopped
+    mem_limit: 64m
     logging: *default-logging
 
   certbot:
@@ -243,6 +268,7 @@ services:
     # Check for renewal every 12h. Certbot only renews certs within 30d of expiry.
     entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet && sleep 12h & wait $${!}; done'
     restart: unless-stopped
+    mem_limit: 64m
     logging: *default-logging
 
   db:
@@ -254,12 +280,22 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    # Postgres doesn't honour mem_limit for shared_buffers — also tune
+    # shared_buffers via -c flag so the planner caps its working set.
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c effective_cache_size=192MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=80
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bot -d transcribe_bot"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    mem_limit: 256m
     logging: *default-logging
 
   db_backup:
@@ -281,11 +317,15 @@ services:
     # run the dump, repeat. No GNU-style `date -d` involved.
     entrypoint: ["/bin/sh", "/usr/local/bin/db_backup_loop.sh"]
     restart: unless-stopped
+    mem_limit: 96m
     logging: *default-logging
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    # Hard memory cap with `noeviction`: Celery uses DB0 as a broker, evicting
+    # broker keys would silently drop tasks. With noeviction Redis returns
+    # OOM errors — Celery raises, the failure is observable in logs.
+    command: redis-server --appendonly yes --maxmemory 96mb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -294,6 +334,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    mem_limit: 128m
     logging: *default-logging
 
   # Auto-deploy: polls ghcr.io for a new `:latest` tag every 60s and
@@ -315,13 +356,17 @@ services:
       # Pin the API version the client uses when talking to the host docker.
       # Host is Docker 24+, any 1.41+ negotiates cleanly.
       DOCKER_API_VERSION: "1.43"
-      WATCHTOWER_POLL_INTERVAL: "60"
+      # 300s instead of 60s: every poll spawns a Docker API client and on a
+      # tight 1.9 GiB box that's a noticeable churn. Deploys still arrive
+      # within 5 min — fast enough.
+      WATCHTOWER_POLL_INTERVAL: "300"
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_INCLUDE_RESTARTING: "true"
       WATCHTOWER_LABEL_ENABLE: "true"
     # Only watches containers labelled `com.centurylinklabs.watchtower.enable=true`.
     # Set on each app service via the labels block; nginx/db/redis stay pinned.
     restart: unless-stopped
+    mem_limit: 64m
     logging: *default-logging
 
 volumes:
