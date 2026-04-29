@@ -21,6 +21,7 @@ celery[redis]==5.4.0
 pydantic==2.9.2
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
+email-validator>=2.0.0
 
 # Audio/Video
 # Unpinned: YouTube changes format manifests frequently, so an old yt-dlp
@@ -46,3 +47,12 @@ prometheus-client==0.21.0
 # Utils
 python-multipart==0.0.18
 tenacity==9.0.0
+aiofiles>=23.0.0
+boto3>=1.34.0
+
+# Web auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+# passlib 1.7.4 calls hashpw with a >72-byte test password during backend
+# init (wrap-bug detection); bcrypt>=4.0 rejects that with ValueError.
+bcrypt<4.0.0

@@ -87,6 +87,17 @@ class Settings(BaseSettings):
     # Admin
     ADMIN_IDS: str = ""
 
+    # Web auth (JWT)
+    JWT_SECRET_KEY: str = "change-me-in-production"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    # Telegram bot username (without @) — used by web Login Widget.
+    BOT_USERNAME: str = ""
+
+    # Max file size for web uploads (default 500 MB, smaller than bot's 2 GB).
+    MAX_UPLOAD_BYTES: int = 500 * 1024 * 1024
+
     # Monitoring
     ENV: str = "development"
     SENTRY_DSN: str = ""
