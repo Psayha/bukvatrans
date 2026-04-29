@@ -26,6 +26,8 @@ class Transcription(Base):
     s3_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     summary_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    error_traceback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     celery_task_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     seconds_charged: Mapped[int] = mapped_column(Integer, default=0)
     is_free: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -27,6 +27,8 @@ def _t_to_dict(t: Transcription, username: Optional[str] = None) -> dict:
         "is_free": t.is_free,
         "language": t.language,
         "error_message": t.error_message,
+        "error_type": t.error_type,
+        "error_traceback": t.error_traceback,
         "created_at": t.created_at.isoformat(),
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
     }

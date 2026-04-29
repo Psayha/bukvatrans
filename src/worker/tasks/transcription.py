@@ -1,5 +1,6 @@
 import asyncio
 import tempfile
+import traceback as tb_module
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -246,16 +247,30 @@ async def _transcribe_async(
         except SoftTimeLimitExceeded as e:
             logger.error("transcription_soft_timeout user_id=%s", user_id)
             metrics.transcriptions_total.labels(status="timeout", source_type=source_type).inc()
-            await _refund_and_notify(transcription_id, user_id, str(e))
+            await _refund_and_notify(
+                transcription_id, user_id, str(e),
+                error_type="SoftTimeLimitExceeded",
+                error_traceback=tb_module.format_exc(),
+            )
             return {"status": "failed", "error": "timeout"}
         except Exception as e:
             logger.error("transcription_error user_id=%s err=%s", user_id, e, exc_info=True)
             metrics.transcriptions_total.labels(status="failed", source_type=source_type).inc()
-            await _refund_and_notify(transcription_id, user_id, str(e))
+            await _refund_and_notify(
+                transcription_id, user_id, str(e),
+                error_type=type(e).__name__,
+                error_traceback=tb_module.format_exc(),
+            )
             return {"status": "failed", "error": str(e)}
 
 
-async def _refund_and_notify(transcription_id: str, user_id: int, error_message: str) -> None:
+async def _refund_and_notify(
+    transcription_id: str,
+    user_id: int,
+    error_message: str,
+    error_type: Optional[str] = None,
+    error_traceback: Optional[str] = None,
+) -> None:
     """Refund charged seconds AND mark transcription failed in one transaction.
 
     Doing both in a single `session.begin()` block prevents the split-brain
@@ -289,6 +304,8 @@ async def _refund_and_notify(transcription_id: str, user_id: int, error_message:
                         user.balance_seconds = (user.balance_seconds or 0) + t.seconds_charged
                 t.status = "failed"
                 t.error_message = error_message[:1000]
+                t.error_type = error_type
+                t.error_traceback = error_traceback
                 t.completed_at = datetime.utcnow()
     except Exception:
         logger.error("refund_failed user_id=%s", user_id, exc_info=True)

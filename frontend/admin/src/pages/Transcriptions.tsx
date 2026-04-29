@@ -27,6 +27,8 @@ export default function Transcriptions() {
     }
   }
 
+  const modalIsError = viewing?.status === 'failed'
+
   return (
     <div className="p-6">
       <h1 className="text-lg font-semibold mb-4">Транскрибации</h1>
@@ -41,6 +43,7 @@ export default function Transcriptions() {
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+        {loadingDetail && <span className="text-xs text-gray-400 self-center">Загрузка...</span>}
       </div>
 
       {isLoading ? (
@@ -55,7 +58,7 @@ export default function Transcriptions() {
                   <th className="px-3 py-2">Пользователь</th>
                   <th className="px-3 py-2">Статус</th>
                   <th className="px-3 py-2">Тип</th>
-                  <th className="px-3 py-2">Файл</th>
+                  <th className="px-3 py-2">Файл / URL</th>
                   <th className="px-3 py-2">Длит.</th>
                   <th className="px-3 py-2">Дата</th>
                   <th className="px-3 py-2"></th>
@@ -63,7 +66,7 @@ export default function Transcriptions() {
               </thead>
               <tbody>
                 {data?.items.map((t: AdminTranscription) => (
-                  <tr key={t.id} className="border-b hover:bg-gray-50">
+                  <tr key={t.id} className={`border-b hover:bg-gray-50 ${t.status === 'failed' ? 'bg-red-50/40' : ''}`}>
                     <td className="px-3 py-2 font-mono text-xs text-gray-400">
                       {t.id.slice(0, 8)}…
                     </td>
@@ -84,8 +87,14 @@ export default function Transcriptions() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-500">{t.source_type}</td>
-                    <td className="px-3 py-2 text-xs text-gray-500 max-w-[120px] truncate">
-                      {t.file_name || '—'}
+                    <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px]">
+                      {t.status === 'failed' && t.error_message ? (
+                        <span className="text-red-500 truncate block" title={t.error_message}>
+                          {t.error_type ? `[${t.error_type}] ` : ''}{t.error_message}
+                        </span>
+                      ) : (
+                        <span className="truncate block">{t.file_name || '—'}</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-xs">
                       {t.duration_seconds ? `${Math.round(t.duration_seconds / 60)}м` : '—'}
@@ -94,12 +103,12 @@ export default function Transcriptions() {
                       {new Date(t.created_at).toLocaleDateString('ru-RU')}
                     </td>
                     <td className="px-3 py-2">
-                      {t.status === 'done' && (
+                      {(t.status === 'done' || t.status === 'failed') && (
                         <button
                           onClick={() => viewDetail(t.id)}
-                          className="text-xs text-blue-600 hover:underline"
+                          className={`text-xs hover:underline ${t.status === 'failed' ? 'text-red-500' : 'text-blue-600'}`}
                         >
-                          Текст
+                          {t.status === 'failed' ? 'Снапшот' : 'Текст'}
                         </button>
                       )}
                     </td>
@@ -117,28 +126,67 @@ export default function Transcriptions() {
         </>
       )}
 
-      {/* Text viewer modal */}
       {viewing && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setViewing(null)}
         >
           <div
-            className="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] flex flex-col"
+            className="bg-white rounded-lg w-full max-w-3xl max-h-[85vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-sm">
-                Транскрибация {viewing.id.slice(0, 8)}…
-              </h3>
-              <button onClick={() => setViewing(null)} className="text-gray-400 hover:text-gray-600">
-                ✕
-              </button>
+            <div className={`flex items-center justify-between p-4 border-b ${modalIsError ? 'bg-red-50' : ''}`}>
+              <div>
+                <h3 className="font-semibold text-sm">
+                  {modalIsError ? '🔴 Снапшот ошибки' : 'Транскрибация'} — {viewing.id.slice(0, 8)}…
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {viewing.user_display} · {viewing.source_type}
+                  {viewing.completed_at && ` · ${new Date(viewing.completed_at).toLocaleString('ru-RU')}`}
+                </p>
+              </div>
+              <button onClick={() => setViewing(null)} className="text-gray-400 hover:text-gray-600 ml-4">✕</button>
             </div>
-            <div className="p-4 overflow-auto flex-1">
-              <pre className="text-sm whitespace-pre-wrap text-gray-700">
-                {viewing.result_text || '(текст недоступен)'}
-              </pre>
+
+            <div className="p-4 overflow-auto flex-1 space-y-4">
+              {modalIsError ? (
+                <>
+                  {/* Source info */}
+                  {(viewing.source_url || viewing.file_name) && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-500 uppercase mb-1">Источник</div>
+                      <div className="text-sm text-gray-700 break-all">
+                        {viewing.source_url || viewing.file_name}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error type + message */}
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 uppercase mb-1">Ошибка</div>
+                    {viewing.error_type && (
+                      <span className="inline-block bg-red-100 text-red-700 text-xs font-mono px-2 py-0.5 rounded mb-1">
+                        {viewing.error_type}
+                      </span>
+                    )}
+                    <p className="text-sm text-red-700">{viewing.error_message || '—'}</p>
+                  </div>
+
+                  {/* Traceback */}
+                  {viewing.error_traceback && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-500 uppercase mb-1">Traceback</div>
+                      <pre className="text-xs bg-gray-900 text-gray-100 p-3 rounded overflow-auto max-h-72 whitespace-pre-wrap">
+                        {viewing.error_traceback}
+                      </pre>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <pre className="text-sm whitespace-pre-wrap text-gray-700">
+                  {viewing.result_text || '(текст недоступен)'}
+                </pre>
+              )}
             </div>
           </div>
         </div>

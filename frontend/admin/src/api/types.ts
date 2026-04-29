@@ -116,10 +116,13 @@ export interface AdminTranscription {
   is_free: boolean
   language: string | null
   error_message: string | null
+  error_type: string | null
+  error_traceback: string | null
   created_at: string
   completed_at: string | null
   result_text?: string
   summary_text?: string
+  source_url?: string
 }
 
 export interface AdminTransaction {
