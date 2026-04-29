@@ -46,3 +46,7 @@ prometheus-client==0.21.0
 # Utils
 python-multipart==0.0.18
 tenacity==9.0.0
+
+# Web auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4

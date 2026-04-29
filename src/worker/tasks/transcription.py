@@ -62,6 +62,34 @@ def transcribe_task(
     )
 
 
+async def _download_from_s3(s3_key: str, output_dir: Path) -> Path:
+    """Download a file from S3 directly, bypassing URL validation.
+
+    Used for web uploads where the API already staged the file.
+    """
+    import asyncio
+    import boto3
+    from botocore.client import Config
+    from src.config import settings
+
+    suffix = Path(s3_key).suffix or ".mp3"
+    out_path = output_dir / f"{uuid.uuid4()}{suffix}"
+
+    def _dl():
+        client = boto3.client(
+            "s3",
+            endpoint_url=settings.S3_ENDPOINT,
+            aws_access_key_id=settings.S3_ACCESS_KEY,
+            aws_secret_access_key=settings.S3_SECRET_KEY,
+            config=Config(signature_version="s3v4"),
+        )
+        client.download_file(settings.S3_BUCKET, s3_key, str(out_path))
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _dl)
+    return out_path
+
+
 async def _get_user_language(user_id: int) -> str:
     """Fetch language preference from Redis; fall back to Russian."""
     import redis.asyncio as aioredis
@@ -113,6 +141,10 @@ async def _transcribe_async(
             # Download file
             if file_id:
                 audio_path = await _download_telegram_file(file_id, tmp_path, source_type)
+            elif source_url and source_url.startswith("s3://"):
+                # Web upload: file was already uploaded to S3 by the API.
+                s3_key = source_url[len("s3://"):]
+                audio_path = await _download_from_s3(s3_key, tmp_path)
             elif source_url:
                 from src.services.downloader import download_url, UnsafeURLError, URLTooLargeError
                 try:
