@@ -2,6 +2,7 @@ import asyncio
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlparse
 
 from src.config import settings
 from src.utils.validators import is_safe_remote_url
@@ -49,18 +50,37 @@ async def probe_url(url: str) -> dict:
 
     import yt_dlp
 
+    domain = urlparse(url).netloc
+
     def _probe() -> dict:
-        with yt_dlp.YoutubeDL({**YDL_OPTS_BASE, "skip_download": True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            # For playlists/"entries", take the first entry to get accurate metadata.
-            if info and "entries" in info and info["entries"]:
-                info = info["entries"][0]
-            return info or {}
+        errors: list[str] = []
+
+        class _ErrLogger:
+            def debug(self, msg): pass
+            def warning(self, msg): pass
+            def error(self, msg): errors.append(msg)
+
+        opts = {**YDL_OPTS_BASE, "skip_download": True, "logger": _ErrLogger()}
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if info and "entries" in info and info["entries"]:
+                    info = info["entries"][0]
+                return info or {}
+        except yt_dlp.utils.DownloadError as e:
+            detail = str(e).removeprefix("ERROR: ").strip()
+            suffix = f" | yt-dlp errors: {'; '.join(errors)}" if errors else ""
+            raise RuntimeError(f"[{domain}] {detail}{suffix}") from e
 
     try:
         info = await asyncio.wait_for(_run_ydl(_probe), timeout=60)
     except asyncio.TimeoutError as e:
-        raise TimeoutError("yt-dlp probe timed out") from e
+        raise TimeoutError(
+            f"Probe timeout (60s): {domain} не ответил — "
+            "сервис недоступен, требует авторизацию или заблокировал запрос"
+        ) from e
+    except RuntimeError as e:
+        raise RuntimeError(str(e)) from e
 
     duration = int(info.get("duration") or 0)
     filesize = int(
@@ -104,12 +124,27 @@ async def download_url(url: str, output_dir: Path) -> Path:
         "max_filesize": settings.MAX_URL_FILESIZE_BYTES,
     }
 
+    domain = urlparse(url).netloc
+
     def _download() -> str:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if info and "entries" in info and info["entries"]:
-                info = info["entries"][0]
-            return ydl.prepare_filename(info)
+        errors: list[str] = []
+
+        class _ErrLogger:
+            def debug(self, msg): pass
+            def warning(self, msg): pass
+            def error(self, msg): errors.append(msg)
+
+        dl_opts = {**opts, "logger": _ErrLogger()}
+        try:
+            with yt_dlp.YoutubeDL(dl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if info and "entries" in info and info["entries"]:
+                    info = info["entries"][0]
+                return ydl.prepare_filename(info)
+        except yt_dlp.utils.DownloadError as e:
+            detail = str(e).removeprefix("ERROR: ").strip()
+            suffix = f" | yt-dlp errors: {'; '.join(errors)}" if errors else ""
+            raise RuntimeError(f"[{domain}] {detail}{suffix}") from e
 
     try:
         filename = await asyncio.wait_for(
@@ -117,7 +152,10 @@ async def download_url(url: str, output_dir: Path) -> Path:
             timeout=settings.CELERY_SOFT_TIME_LIMIT - 60,
         )
     except asyncio.TimeoutError as e:
-        raise TimeoutError("yt-dlp download timed out") from e
+        limit = settings.CELERY_SOFT_TIME_LIMIT - 60
+        raise TimeoutError(f"Download timeout ({limit}s): {domain}") from e
+    except RuntimeError as e:
+        raise RuntimeError(str(e)) from e
 
     mp3_path = Path(filename).with_suffix(".mp3")
     if mp3_path.exists():
